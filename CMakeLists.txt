@@ -1,17 +1,26 @@
 # CMakeLists.txt
 cmake_minimum_required(VERSION 3.12)
-project(stp)
+project(stp LANGUAGES CXX)
 
 # Set C++ standard
-set(CMAKE_CXX_STANDARD 11)
+set(STP_CXX_STANDARD "17" CACHE STRING "C++ standard")
+set(CMAKE_CXX_STANDARD ${STP_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Create a target for the header-only library
-add_library(stp INTERFACE)
-target_include_directories(stp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# Options
+option(STP_EXAMPLES "Build examples" ON)
+option(STP_TEST "Build tests" ON)
+
+# Add main include files
+add_subdirectory(include)
 
 # Add third-party libraries
 add_subdirectory(lib)
 
-# Add an executable that uses the header-only library
-add_executable(test test.cpp)
-target_link_libraries(test PRIVATE stp fmt)
+if(STP_EXAMPLES)
+  add_subdirectory(examples)
+endif()
+
+if(STP_TEST)
+  add_subdirectory(test)
+endif()
