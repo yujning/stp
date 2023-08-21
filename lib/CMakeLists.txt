@@ -3,5 +3,3 @@ if (NOT TARGET fmt)
   target_include_directories(fmt SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/fmt)
   target_compile_definitions(fmt INTERFACE FMT_HEADER_ONLY)
 endif()
-
-add_subdirectory(eigen) # v3.4.0
