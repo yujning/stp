@@ -1,9 +1,3 @@
-#include <stp/stp.hpp>
-
-int main()
-{
-  stp::MyStp stp_engine;
-  stp_engine.getVersion();
-
-  return 0;
-}
+#define CATCH_CONFIG_MAIN
+#include <catch.hpp>
+#include <iostream>

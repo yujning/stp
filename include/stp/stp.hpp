@@ -40,4 +40,5 @@ namespace stp
 }
 
 
-#include "stp_msg.hpp"
+#include "stp/stp_msg.hpp"
+#include "stp/stp_eigen.hpp"
