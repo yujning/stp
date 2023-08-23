@@ -34,3 +34,19 @@ TEST_CASE( "parse stp matrix chain", "[utils]" )
     CHECK( allTokens[6] == "m_n" );
     CHECK( allTokens[7] == "x_3" );
 }
+
+TEST_CASE( "parse stp matrix chain with more details", "[utils]" )
+{
+  /* strings with multiple tokens with the same name */
+  std::string input = "m_i m_c x_1 x_3 m_i x_2 m_c x_3";
+  std::vector<std::string> mTokens;
+  std::vector<std::string> xTokens;
+  std::unordered_map<std::string, int> tokenCounts;
+  std::unordered_map<std::string, int> tokenIndices;
+
+  parse_tokens_with_details( input, "m_", mTokens, tokenCounts, tokenIndices );
+  parse_tokens_with_details( input, "x_", xTokens, tokenCounts, tokenIndices );
+
+  CHECK( mTokens[2] == "m_i_1" );
+  CHECK( xTokens[3] == "x_3_1" );
+}
