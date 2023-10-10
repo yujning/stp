@@ -47,7 +47,7 @@ TEST_CASE( "swap matrix for column vector", "[eigen]" )
   CHECK( stp3 == stp4 );
 }
 
-TEST_CASE( " power reducing matrix", "[eigen]" )
+TEST_CASE( "power reducing matrix", "[eigen]" )
 {
   /* A stp A = PR_2 stp A, note that A is a Boolean value, cannot be a Matrix */
   MatrixXi A( 2, 1 );
@@ -63,4 +63,24 @@ TEST_CASE( " power reducing matrix", "[eigen]" )
   MatrixXi stp2 = semi_tensor_product( PR2, A );
 
   CHECK( stp1 == stp2 );
+}
+
+TEST_CASE( "expression to tt", "[eigen]" )
+{
+  std::string expr1 = "(a & b) | (a & ~c) | (~b & ~c)";
+  
+  std::vector<std::string> inputs_order1 = { "a", "b", "c" };
+  MatrixXi mat1 = stp::from_exp_to_nmx( expr1, inputs_order1 );
+  CHECK( stp::to_binary( mat1 ) == "10001011" );
+  CHECK( stp::to_hex( mat1 ) == "8B" );
+  
+  std::vector<std::string> inputs_order2 = { "a", "c", "b" };
+  MatrixXi mat2 = stp::from_exp_to_nmx( expr1, inputs_order2 );
+  CHECK( stp::to_binary( mat2 ) == "10001101" );
+  CHECK( stp::to_hex( mat2 ) == "8D" );
+  
+  std::vector<std::string> inputs_order3 = { "c", "b", "a" };
+  MatrixXi mat3 = stp::from_exp_to_nmx( expr1, inputs_order3 );
+  CHECK( stp::to_binary( mat3 ) == "11010001" );
+  CHECK( stp::to_hex( mat3 ) == "D1" );
 }
