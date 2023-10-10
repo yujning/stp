@@ -91,6 +91,37 @@ std::string to_binary( const matrix& mat )
   return st.str();
 }
 
+void print_hex( const std::string& binary_string, std::ostream& os = std::cout )
+{
+  assert( binary_string.length() % 4 == 0 );   
+  
+  for ( size_t i = 0; i < binary_string.length(); i += 4 ) 
+  {
+    std::string block = binary_string.substr( i, 4 );
+
+    int decimal_value = std::bitset<4>(block).to_ulong(); 
+    char hex_digit;
+    
+    if (decimal_value < 10) 
+    {
+      hex_digit = '0' + decimal_value; 
+    } 
+    else 
+    {
+      hex_digit = 'A' + ( decimal_value - 10 );
+    }
+
+    os << hex_digit;
+  }
+}
+
+std::string to_hex( const matrix& mat )
+{
+  std::stringstream st;
+  print_hex( to_binary( mat ), st );
+  return st.str();
+}
+
 matrix generate_swap_matrix( const int& m, const int& n )
 {
   matrix swap_matrixXi = matrix::Zero( m * n, m * n );
