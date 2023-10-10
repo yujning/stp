@@ -6,7 +6,7 @@
 #include <numeric>
 
 using matrix = Eigen::MatrixXi;      // Defines the type of matrix to use
-using m_chain = std::vector<matrix>; // Defined matrix chain
+using matrix_chain = std::vector<matrix>; // Defined matrix chain
 
 /*
   Some static global functions for accessibility.
@@ -27,13 +27,16 @@ using m_chain = std::vector<matrix>; // Defined matrix chain
 
 namespace stp
 {
-std::vector<std::string> m_split( const std::string& input, const std::string& pred )
+
+std::vector<std::string> matrix_split( const std::string& input, const std::string& pred )
 {
   std::vector<std::string> result;
   std::string temp{ "" };
+
   unsigned count1 = input.size();
   unsigned count2 = pred.size();
   unsigned j;
+  
   for ( size_t i = 0; i < count1; i++ )
   {
     for ( j = 0; j < count2; j++ )
@@ -43,9 +46,12 @@ std::vector<std::string> m_split( const std::string& input, const std::string& p
         break;
       }
     }
+    
     // if input[i] != pred中的任何一个 该字符加到temp上
     if ( j == count2 )
+    {
       temp += input[i];
+    }
     else
     {
       if ( !temp.empty() )
@@ -55,11 +61,13 @@ std::vector<std::string> m_split( const std::string& input, const std::string& p
       }
     }
   }
+
   if ( !temp.empty() )
   {
     result.push_back( temp );
     temp.clear();
   }
+
   return result;
 }
 
@@ -76,7 +84,9 @@ bool is_variable( const matrix& mat )
 int get_variable( const matrix& mat )
 {
   if ( mat.rows() == 2 && mat.cols() == 1 )
+  {
     return mat( 0, 0 );
+  }
   return 0;
 }
 
@@ -102,9 +112,13 @@ matrix kronecker_product( const matrix& A, const matrix& B )
   auto b_dimensions = B.rows() * B.cols();
 
   if ( a_dimensions == 1u )
+  {
     return B;
+  }
   if ( b_dimensions == 1u )
+  {
     return A;
+  }
 
   matrix KP( A.rows() * B.rows(), A.cols() * B.cols() );
 
@@ -138,19 +152,26 @@ matrix semi_tensor_product( const matrix& A, const matrix& B )
   return KPa * KPb;
 }
 
-matrix matrix_chain_mul( const m_chain& matrix_chain )
+matrix matrix_chain_multiply( const matrix_chain& mc )
 {
-  assert( matrix_chain.size() > 0 );
+  assert( mc.size() > 0 );
   matrix result_matrix;
-  if ( matrix_chain.size() == 1 )
-    return matrix_chain[0];
-  result_matrix = semi_tensor_product( matrix_chain[0], matrix_chain[1] );
-  for ( int i = 2; i < matrix_chain.size(); i++ )
-    result_matrix = semi_tensor_product( result_matrix, matrix_chain[i] );
+  
+  if ( mc.size() == 1 )
+  {
+    return mc[0];
+  }
+  
+  result_matrix = semi_tensor_product( mc[0], mc[1] );
+  
+  for ( int i = 2; i < mc.size(); i++ )
+  {
+    result_matrix = semi_tensor_product( result_matrix, mc[i] );
+  }
   return result_matrix;
 }
 
-matrix normalize_matrix( m_chain matrix_chain )
+matrix normalize_matrix( matrix_chain mc )
 {
   matrix Mr( 4, 2 ); // Reduced power matrix
   Mr << 1, 0, 0, 0, 0, 0, 0, 1;
@@ -160,17 +181,17 @@ matrix normalize_matrix( m_chain matrix_chain )
   int p_variable;
   int p;
   int max = 0; // the max is the number of variable
-  for ( int i = 0; i < matrix_chain.size(); i++ )
+  for ( int i = 0; i < mc.size(); i++ )
   {
-    if ( matrix_chain[i]( 0, 0 ) > max )
-      max = matrix_chain[i]( 0, 0 );
+    if ( mc[i]( 0, 0 ) > max )
+      max = mc[i]( 0, 0 );
   }
   std::vector<int> idx( max + 1 ); // id[0] is the max of idx
-  p_variable = matrix_chain.size() - 1;
+  p_variable = mc.size() - 1;
   while ( p_variable >= 0 )
   {
     bool find_variable = false;
-    matrix& matrix = matrix_chain[p_variable];
+    matrix& matrix = mc[p_variable];
     int var = get_variable( matrix );
     if ( var != 0 ) // 1:find a variable
     {
@@ -178,9 +199,9 @@ matrix normalize_matrix( m_chain matrix_chain )
       {
         idx[var] = idx[0] + 1;
         idx[0]++;
-        if ( p_variable == matrix_chain.size() - 1 ) // 第一次出现的变量在矩阵链尾部
+        if ( p_variable == mc.size() - 1 ) // 第一次出现的变量在矩阵链尾部
         {
-          matrix_chain.pop_back();
+          mc.pop_back();
           p_variable--;
           continue;
         }
@@ -194,7 +215,7 @@ matrix normalize_matrix( m_chain matrix_chain )
         else
         {
           find_variable = true;
-          matrix_chain.push_back( generate_swap_matrix( 2, 1 << ( idx[0] - idx[var] ) ) );
+          mc.push_back( generate_swap_matrix( 2, 1 << ( idx[0] - idx[var] ) ) );
           for ( int i = 1; i <= max; i++ )
           {
             if ( idx[i] != 0 && idx[i] > idx[var] )
@@ -203,28 +224,34 @@ matrix normalize_matrix( m_chain matrix_chain )
           idx[var] = idx[0];
         }
       }
-      m_chain matrix_chain1;
-      matrix_chain1.clear();
-      for ( p = p_variable + 1; p < matrix_chain.size(); p++ )
+
+      matrix_chain mc_temp;
+      mc_temp.clear();
+      
+      for ( p = p_variable + 1; p < mc.size(); p++ )
       {
-        matrix_chain1.push_back( matrix_chain[p] );
+        mc_temp.push_back( mc[p] );
       }
+
       while ( p > p_variable + 1 )
       {
-        matrix_chain.pop_back();
+        mc.pop_back();
         p--;
       }
-      if ( matrix_chain1.size() > 0 )
+
+      if ( mc_temp.size() > 0 )
       {
-        matrix_chain.push_back( matrix_chain_mul( matrix_chain1 ) );
+        mc.push_back( matrix_chain_multiply( mc_temp ) );
       }
-      if ( p_variable != matrix_chain.size() - 1 )
+
+      if ( p_variable != mc.size() - 1 )
       {
-        matrix_chain[p_variable] = kronecker_product( I2, matrix_chain[p_variable + 1] );
-        matrix_chain.pop_back();
+        mc[p_variable] = kronecker_product( I2, mc[p_variable + 1] );
+        mc.pop_back();
       }
+
       if ( find_variable )
-        matrix_chain.push_back( Mr );
+        mc.push_back( Mr );
       continue;
     }
     else
@@ -232,12 +259,10 @@ matrix normalize_matrix( m_chain matrix_chain )
       p_variable--;
     }
   }
-  // normal_matrix = matrix_chain_mul(matrix_chain);
-  // matrix_chain.clear();
-  // matrix_chain.push_back(normal_matrix);
+  
   for ( int i = max; i > 0; i-- ) //!
   {
-    matrix_chain.push_back( generate_swap_matrix( 2, pow( 2, idx[0] - idx[i] ) ) );
+    mc.push_back( generate_swap_matrix( 2, pow( 2, idx[0] - idx[i] ) ) );
     for ( int j = 1; j <= max; j++ )
     {
       if ( idx[j] != 0 && idx[j] > idx[i] )
@@ -245,7 +270,7 @@ matrix normalize_matrix( m_chain matrix_chain )
     }
     idx[i] = max;
   }
-  normal_matrix = matrix_chain_mul( matrix_chain );
+  normal_matrix = matrix_chain_multiply( mc );
   return normal_matrix;
 }
 
@@ -317,8 +342,8 @@ matrix from_exp_to_nmx( const std::string& expression, const std::vector<std::st
   }
   std::string equ = equation[0];
   equation.clear();
-  equation = m_split( equ, "()" );
-  m_chain matrix_chain;
+  equation = matrix_split( equ, "()" );
+  matrix_chain mc;
   Eigen::MatrixXi Mc( 2, 4 );
   Mc << 1, 0, 0, 0, 0, 1, 1, 1;
   Eigen::MatrixXi Md( 2, 4 );
@@ -328,13 +353,21 @@ matrix from_exp_to_nmx( const std::string& expression, const std::vector<std::st
   for ( int i = 0; i < equation.size(); i++ )
   {
     if ( equation[i] == "&" )
-      matrix_chain.push_back( Mc );
+    {
+      mc.push_back( Mc );
+    }
     else if ( equation[i] == "|" )
-      matrix_chain.push_back( Md );
+    {
+      mc.push_back( Md );
+    }
     else if ( equation[i] == "~" )
-      matrix_chain.push_back( Mn );
+    {
+      mc.push_back( Mn );
+    }
     else if ( equation[i] == "" || equation[i] == " " )
-      ;
+    {
+      continue;
+    }
     else // variable
     {
       for ( int j = 0; j < input_names.size(); j++ )
@@ -343,26 +376,30 @@ matrix from_exp_to_nmx( const std::string& expression, const std::vector<std::st
         {
           Eigen::MatrixXi M( 2, 1 );
           M << j + 1, j + 1;
-          matrix_chain.push_back( M );
+          mc.push_back( M );
           break;
         }
       }
     }
   }
-  // print m_chain
+  // print matrix_chain
   if ( print )
   {
     auto mat_to_var = [&]( const matrix& mat ) { return input_names[mat( 0, 0 ) - 1]; };
-    for ( const auto& mat : matrix_chain )
+    for ( const auto& mat : mc )
     {
       if ( is_variable( mat ) )
+      {
         std::cout << mat_to_var( mat ) << std::endl;
+      }
       else
+      {
         std::cout << mat << std::endl;
+      }
     }
   }
 
-  matrix p = normalize_matrix( matrix_chain );
+  matrix p = normalize_matrix( mc );
   return p;
 }
 } // namespace stp
