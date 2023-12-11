@@ -3,6 +3,8 @@
 #### Introduction
 Semi-Tensor Product (STP) engine for Electronic Design Automation (EDA)
 
+[Read the full documentation.](https://stp-based-logic-synthesis-tool.readthedocs.io/en/latest/ )
+
 #### Using stp as a stand-alone tool
 Now, we use [eigen](https://eigen.tuxfamily.org/) library for matrix computation, so please install it
 before running this project.
