@@ -4,6 +4,7 @@
 
 #include <iostream> 
 #include <numeric>
+#include <bitset>
 
 using matrix = Eigen::MatrixXi;           // Defines the type of matrix to use
 using matrix_chain = std::vector<matrix>; // Defined matrix chain

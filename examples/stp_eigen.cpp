@@ -1,5 +1,6 @@
 #include <iostream>
 #include <stp/stp_eigen.hpp>
+#include <stp/stp_logic_expr.hpp>
 
 using Eigen::MatrixXi;
 
@@ -49,4 +50,5 @@ int main()
   std::cout << "The hex truth table is: 0X" << stp::to_hex( mat2 ) << std::endl;
   
   std::cout << "----------------------------------------------------------------------------" << std::endl;
+  stp::test();
 }
