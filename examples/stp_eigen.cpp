@@ -33,7 +33,7 @@ int main()
   
   std::string expr1 = "(a & b) | (a & ~c) | (~b & ~c)";
   std::vector<std::string> inputs_order1 = { "a", "b", "c" };
-  MatrixXi mat1 = stp::from_exp_to_nmx( expr1, inputs_order1, false );
+  MatrixXi mat1 = stp::from_exp_to_nmx( expr1, inputs_order1, true );
   std::cout << "The normal matrix for expression " << expr1 << " is " << std::endl;
   std::cout << mat1 << std::endl;
   std::cout << "The binary truth table is: " << stp::to_binary( mat1 ) << std::endl;

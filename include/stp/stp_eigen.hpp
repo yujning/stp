@@ -226,6 +226,7 @@ matrix normalize_matrix( matrix_chain mc )
     }
   }
 
+  std::cout << "max=" << max << std::endl;
   std::vector<int> idx( max + 1 ); // id[0] is the max of idx
   p_variable = mc.size() - 1;
 
@@ -330,7 +331,7 @@ matrix normalize_matrix( matrix_chain mc )
 //                      a b c
 matrix from_exp_to_nmx( const std::string& expression, 
                         const std::vector<std::string>& input_names, 
-                        bool print = false )
+                        bool print = true )
 {
   std::vector<std::string> equation;
   equation.push_back( "(" );
@@ -462,6 +463,7 @@ matrix from_exp_to_nmx( const std::string& expression,
   // print matrix_chain
   if ( print )
   {
+    std::cout << "Print\n";
     auto mat_to_var = [&]( const matrix& mat ) { return input_names[ mat( 0, 0 ) - 1 ]; };
     for ( const auto& mat : mc )
     {
