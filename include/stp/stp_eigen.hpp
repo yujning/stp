@@ -226,7 +226,6 @@ matrix normalize_matrix( matrix_chain mc )
     }
   }
 
-  std::cout << "max=" << max << std::endl;
   std::vector<int> idx( max + 1 ); // id[0] is the max of idx
   p_variable = mc.size() - 1;
 
