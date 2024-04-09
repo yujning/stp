@@ -107,6 +107,8 @@ namespace stp
         Mn << 0, 1, 1, 0;
         
         all_tokens = parse_tokens( expr, "" );
+        auto x_tokens = parse_tokens( expr, "x_" );
+        num_vars_in_expr = x_tokens.size();
       }
 
       matrix get_variable_matrix( const std::string& var )
@@ -176,6 +178,34 @@ namespace stp
         return count;
       }
 
+      std::vector<std::string> vars_power_reducing( const std::vector<std::string>& inputs )
+      {
+        std::vector<std::string> new_expr;
+        std::vector<std::string> temp_vars;
+
+        for( int i = 0; i < inputs.size(); i++ )
+        {
+          if( !is_variable( inputs[i] ) )
+          {
+            new_expr.push_back( inputs[i] );
+          }
+          else
+          {
+            if( temp_vars.size() > 0 && inputs[i] == temp_vars.back() ) //power reducing
+            {
+              temp_vars.insert( temp_vars.end() - 1, "PR2" );
+            }
+            else
+            {
+              temp_vars.push_back( inputs[i] );
+            }
+          }
+        }
+
+        new_expr.insert( new_expr.end(), temp_vars.begin(), temp_vars.end() );
+        return new_expr;
+      }
+      
       std::vector<std::string> move_vars_to_rightside( const std::vector<std::string>& inputs )
       {
         std::vector<std::string> new_expr;
@@ -199,25 +229,7 @@ namespace stp
           }
           else
           {
-            if( temp_vars.size() > 0 && inputs[i] == temp_vars.back() ) //power reducing
-            { 
-              auto count = get_the_number_vars_before_operation( inputs, i );
-                
-              if( count == 0 )
-              {
-                temp_vars.insert( temp_vars.end() - 1, "PR2" );
-              }
-              else
-              {
-                int dim = std::pow( 2, count - 1 ); //note x_i already appear two times, so count must minus 1
-                temp_vars.insert( temp_vars.end() - count, 
-                                  "I" + std::to_string( dim ) + " PR2" );
-              }
-            }
-            else
-            {
-              temp_vars.push_back( inputs[i] );
-            }
+            temp_vars.push_back( inputs[i] );
           }
         }
         
@@ -239,38 +251,42 @@ namespace stp
         return s1 < s2; //lexicographical order
       }
 
-      std::vector<std::string> swap_vars( const std::vector<std::string>& inputs,
-                                                    const std::string& var1,
-                                                    const std::string& var2 )
+      std::vector<std::string> swap_vars( const std::vector<std::string>& inputs, int idx )
       {
         auto result = inputs;
-        bool find_var1 = false;
-        bool find_var2 = false;
-        int idx_var1;
-        int idx_var2;
+        bool find_var = false;
+        int idx_var;
 
         for( auto i = 0; i < inputs.size(); i++ )
         {
-          if( inputs[i] == var1 )
+          if( is_variable( inputs[i] ) )
           {
-            idx_var1 = i;
-            find_var1 = true;
-          }
-          else if( inputs[i] == var2 )
-          {
-            idx_var2 = i;
-            find_var2 = true;
-          }
-
-          if( find_var1 && find_var2 )
-          {
+            idx_var = i;
+            find_var = true;
             break;
           }
         }
 
-        std::swap( result[idx_var2], result[idx_var1] );
-        result.insert( result.begin() + ( idx_var1 > idx_var2 ? idx_var2 : idx_var1 ), "W2" );
+        assert( find_var );
+        std::swap( result[idx_var + idx], result[idx_var + idx + 1] );
+        result.insert( result.begin() + idx_var + idx, "W2" );
         return result;
+      }
+
+      bool validate( const std::vector<std::string>& inputs )
+      {
+        for( int i = 0; i < inputs.size(); i++ )
+        {
+          if( !is_variable( inputs[i] ) )
+          {
+            if( get_the_number_vars_before_operation( inputs, i ) != 0 )
+            {
+              return false;
+            }
+          }
+        }
+
+        return true;
       }
 
       std::vector<std::string> sort_vars()
@@ -287,7 +303,8 @@ namespace stp
           {
             auto current_result = result;
             auto vars_right_result = move_vars_to_rightside( current_result );
-            result = swap_vars( vars_right_result, x_tokens[j+1], x_tokens[j] );
+
+            result = swap_vars( vars_right_result,  j );
 
             if( verbose )
             {
@@ -300,8 +317,12 @@ namespace stp
             --j;
           }
         }
+
+        auto temp_result = vars_power_reducing( move_vars_to_rightside( result ) );
         
-        return move_vars_to_rightside( result );
+        result = move_vars_to_rightside( temp_result );
+        assert( validate(result) );
+        return result;
       }
 
       void run()
@@ -312,8 +333,10 @@ namespace stp
           //expr_to_chain();
           //print_chain();
           auto expr_ops  = move_vars_to_rightside( all_tokens );
+          print_strings( expr_ops );
           auto normal = sort_vars();
-          normal.insert( normal.begin(), expr_ops.begin(), expr_ops.end() - input_names.size() - 1 );
+          print_strings( normal );
+          normal.insert( normal.begin(), expr_ops.begin(), expr_ops.end() - num_vars_in_expr );
           print_strings( normal );
         }
         else
@@ -327,7 +350,8 @@ namespace stp
       std::string expr;
       std::vector<std::string> all_tokens;
       std::vector<std::string> input_names; //the name of variables
-      bool verbose = false;
+      bool verbose = true;
+      int num_vars_in_expr;
       matrix_chain chain;
       matrix Mr; //power reducing 
       matrix I2; //identity
@@ -346,8 +370,8 @@ namespace stp
 
   void test()
   {
-    std::string input = "m_i m_c x_1 x_3 m_c x_2 m_n x_3";
-    std::vector<std::string> input_names{ "x_1", "x_2", "x_3" };
+    std::string input = "m_c m_d x_1 x_2 m_d x_1 x_2";
+    std::vector<std::string> input_names{ "x_1", "x_2" };
     expr_normalize( input, input_names );
   }
 }
