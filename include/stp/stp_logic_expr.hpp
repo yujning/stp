@@ -34,6 +34,7 @@
 #include <cmath>
 
 #include "stp/stp_utils.hpp"
+#include "stp/stp_eigen.hpp"
 
 using matrix = Eigen::MatrixXi;           // Defines the type of matrix to use
 using matrix_chain = std::vector<matrix>; // Defined matrix chain
@@ -91,9 +92,6 @@ namespace stp
         Mr = matrix::Zero( 4, 2 );
         Mr << 1, 0, 0, 0, 0, 0, 0, 1;
         
-        I2 = matrix::Zero( 2, 2 );
-        I2 << 1, 0, 0, 1;
-        
         Mc = matrix::Zero( 2, 4 );
         Mc << 1, 0, 0, 0, 0, 1, 1, 1;
         
@@ -126,24 +124,73 @@ namespace stp
           assert( false );
       }
 
-      void expr_to_chain()
+      int get_identity_dim( const std::string& token )
       {
+        int number;
+        size_t digit_start = token.find_first_of("0123456789");
 
-        for( const auto& token : all_tokens )
+        if (digit_start != std::string::npos) 
+        {
+          std::string number_part = token.substr( digit_start );
+          number = std::stoi( number_part );
+        } 
+        else 
+        {
+          assert( false && "No number found." );
+        }
+
+        return number;
+      }
+
+      matrix_chain expr_to_chain( const std::vector<std::string>& normal )
+      {
+        //first, get the inital chain
+        for( const auto& token : normal )
         {
           if( token == "m_c" ) { chain.push_back( Mc ); }
           else if( token == "m_d" ) { chain.push_back( Md ); }
           else if( token == "m_n" ) { chain.push_back( Mn ); }
           else if( token == "m_i" ) { chain.push_back( Mi ); }
-          else if( token.substr( 0, 2 ) == "x_" ) //variable
+          else if( token.substr( 0, 1 ) == "I" ) //identity
           {
-            chain.push_back( get_variable_matrix( token ) );
+            auto dim = get_identity_dim( token );
+
+            matrix identity_matrix;
+            identity_matrix.setIdentity(dim, dim);
+                
+            chain.push_back( identity_matrix );
+          }
+          else if( token == "W2" )
+          {
+            chain.push_back( generate_swap_matrix( 2, 2 ) );
+          }
+          else if( token == "PR2" )
+          {
+            chain.push_back( Mr );
+          }
+          else // variable
+          {
+            assert( is_variable( token ) );
+          }
+        }
+        
+        //for the identity matrix, we should first calculate the kronecker
+        //product
+        matrix_chain new_chain;
+        for( int i = 0; i < normal.size() - input_names.size(); i++ )
+        {
+          if( normal[i].substr( 0, 1 ) == "I" )
+          {
+            new_chain.push_back( kronecker_product( chain[i], chain[i+1] ) );
+            i++;
           }
           else
           {
-            std::cerr << "Unknown token.\n";
+            new_chain.push_back( chain[i] );
           }
         }
+
+        return new_chain;
       }
 
       void print_chain()
@@ -160,7 +207,7 @@ namespace stp
           }
           else
           {
-            std::cout << m << std::endl;
+            std::cout << m << std::endl << std::endl;
           }
         }
       }
@@ -330,14 +377,15 @@ namespace stp
         if( is_valid_string() )
         {
           initialization();
-          //expr_to_chain();
-          //print_chain();
           auto expr_ops  = move_vars_to_rightside( all_tokens );
           print_strings( expr_ops );
           auto normal = sort_vars();
           print_strings( normal );
           normal.insert( normal.begin(), expr_ops.begin(), expr_ops.end() - num_vars_in_expr );
           print_strings( normal );
+          auto mc = expr_to_chain( normal );
+
+          std::cout << matrix_chain_multiply( mc ) << std::endl;
         }
         else
         {
@@ -350,11 +398,10 @@ namespace stp
       std::string expr;
       std::vector<std::string> all_tokens;
       std::vector<std::string> input_names; //the name of variables
-      bool verbose = true;
+      bool verbose = false;
       int num_vars_in_expr;
       matrix_chain chain;
       matrix Mr; //power reducing 
-      matrix I2; //identity
       matrix Mc; //conjunctive
       matrix Md; //disjunctive
       matrix Mi; //implication
@@ -370,8 +417,8 @@ namespace stp
 
   void test()
   {
-    std::string input = "m_c m_d x_1 x_2 m_d x_1 x_2";
-    std::vector<std::string> input_names{ "x_1", "x_2" };
+    std::string input = "m_d m_c x_1 x_2 m_d m_c x_1 m_n x_3 m_c m_n x_2 m_n x_3";
+    std::vector<std::string> input_names{ "x_1", "x_2", "x_3" };
     expr_normalize( input, input_names );
   }
 }
