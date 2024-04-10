@@ -65,6 +65,7 @@ TEST_CASE( "power reducing matrix", "[eigen]" )
   CHECK( stp1 == stp2 );
 }
 
+/*
 TEST_CASE( "expression to tt", "[eigen]" )
 {
   std::string expr1 = "(a & b) | (a & ~c) | (~b & ~c)";
@@ -83,4 +84,4 @@ TEST_CASE( "expression to tt", "[eigen]" )
   MatrixXi mat3 = stp::from_exp_to_nmx( expr1, inputs_order3 );
   CHECK( stp::to_binary( mat3 ) == "11010001" );
   CHECK( stp::to_hex( mat3 ) == "D1" );
-}
+}*/

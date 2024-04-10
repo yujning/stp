@@ -6,6 +6,15 @@
 
 namespace stp
 {
+  void print_strings( const std::vector<std::string>& inputs )
+  {
+    for( auto s : inputs )
+    {
+      std::cout << " " << s << " "; 
+    }
+    std::cout << std::endl;
+  }
+
   std::vector<std::string> parse_tokens( const std::string &input, const std::string &prefix ) 
   {
     std::istringstream iss(input);
