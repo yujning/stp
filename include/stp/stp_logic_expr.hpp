@@ -94,6 +94,9 @@ namespace stp
         Mi = matrix::Zero( 2, 4 );
         Mi << 1, 0, 1, 1, 0, 1, 0, 0;
         
+        Me = matrix::Zero( 2, 4 );
+        Me << 1, 0, 0, 1, 0, 1, 1, 0;
+        
         Mn = matrix::Zero( 2, 2 );
         Mn << 0, 1, 1, 0;
         
@@ -144,6 +147,7 @@ namespace stp
           else if( token == "m_d" ) { chain.push_back( Md ); }
           else if( token == "m_n" ) { chain.push_back( Mn ); }
           else if( token == "m_i" ) { chain.push_back( Mi ); }
+          else if( token == "m_e" ) { chain.push_back( Me ); }
           else if( token.substr( 0, 1 ) == "I" ) //identity
           {
             auto dim = get_identity_dim( token );
@@ -415,6 +419,7 @@ namespace stp
       matrix Mc; //conjunctive
       matrix Md; //disjunctive
       matrix Mi; //implication
+      matrix Me; //equivalence
       matrix Mn; //not
   };
 
