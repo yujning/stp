@@ -4,7 +4,6 @@
 
 #include <iostream> 
 #include <numeric>
-#include <bitset>
 
 using matrix = Eigen::MatrixXi;           // Defines the type of matrix to use
 using matrix_chain = std::vector<matrix>; // Defined matrix chain
@@ -13,58 +12,12 @@ using matrix_chain = std::vector<matrix>; // Defined matrix chain
 namespace stp
 {
 
-  unsigned get_lcm( unsigned m, unsigned n )
+  inline unsigned get_lcm( unsigned m, unsigned n )
   {
     return ( m * n ) / std::gcd( m, n );
   }
 
-  void print_binary( const matrix& mat, std::ostream& os = std::cout )
-  {
-    for( auto i = mat.cols() - 1; i >= 0; i-- )
-    {
-      os << mat( 0, i );
-    }
-  }
-
-  std::string to_binary( const matrix& mat )
-  {
-    std::stringstream st;
-    print_binary( mat, st );
-    return st.str();
-  }
-
-  void print_hex( const std::string& binary_string, std::ostream& os = std::cout )
-  {
-    assert( binary_string.length() % 4 == 0 );   
-
-    for ( size_t i = 0; i < binary_string.length(); i += 4 ) 
-    {
-      std::string block = binary_string.substr( i, 4 );
-
-      int decimal_value = std::bitset<4>(block).to_ulong(); 
-      char hex_digit;
-
-      if (decimal_value < 10) 
-      {
-        hex_digit = '0' + decimal_value; 
-      } 
-      else 
-      {
-        hex_digit = 'A' + ( decimal_value - 10 );
-      }
-
-      os << hex_digit;
-    }
-  }
-
-  std::string to_hex( const matrix& mat )
-  {
-    std::stringstream st;
-    print_hex( to_binary( mat ), st );
-    return st.str();
-  }
-
-  matrix generate_swap_matrix( const int& m, const int& n )
+  inline matrix generate_swap_matrix( const int& m, const int& n )
   {
     matrix swap_matrixXi = matrix::Zero( m * n, m * n );
     int p, q;
@@ -79,7 +32,7 @@ namespace stp
     return swap_matrixXi;
   }
 
-  matrix kronecker_product( const matrix& A, const matrix& B )
+  inline matrix kronecker_product( const matrix& A, const matrix& B )
   {
     /* trivial cases */
     auto a_dimensions = A.rows() * A.cols();
@@ -107,7 +60,7 @@ namespace stp
     return KP;
   }
 
-  matrix semi_tensor_product( const matrix& A, const matrix& B )
+  inline matrix semi_tensor_product( const matrix& A, const matrix& B )
   {
     unsigned m = A.rows();
     unsigned n = A.cols();
@@ -126,7 +79,7 @@ namespace stp
     return KPa * KPb;
   }
 
-  matrix matrix_chain_multiply( const matrix_chain& mc )
+  inline matrix matrix_chain_multiply( const matrix_chain& mc )
   {
     assert( mc.size() > 0 );
     matrix result_matrix;

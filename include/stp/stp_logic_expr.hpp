@@ -27,6 +27,7 @@
   \file stp_logic_expr.hpp
   \brief header file for stp based logic expression
   \author Zhufei Chu
+  \author Ruibing Zhang
 */
 
 #pragma once
@@ -606,8 +607,8 @@ namespace stp
   // example:             (a & b) | (a & ~c) | (~b & ~c)                                 
   //                      a b c
   matrix from_exp_to_nmx( const std::string& expression, 
-      const std::vector<std::string>& input_names, 
-      bool print = true )
+                          const std::vector<std::string>& input_names, 
+                          bool print = false )
   {
     std::vector<std::string> equation;
     equation.push_back( "(" );
@@ -762,7 +763,14 @@ namespace stp
   matrix expr_normalize( const std::string& expr, const std::vector<std::string>& input_names, bool verbose = false )
   {
     expr_normalize_impl p( expr, input_names, verbose );
-    return p.run();
+    auto mat = p.run();
+
+    if( verbose )
+    {
+      std::cout << "[i] The matrix is " << std::endl << mat << std::endl;
+    }
+
+    return mat;
   }
   
   void test()
