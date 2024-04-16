@@ -57,13 +57,22 @@ TEST_CASE( "STP expression to tt with more expresssions", "[expr]" )
 
     std::string input2 = "m_i m_c x_1 x_2 m_d x_3 x_4";
     std::vector<std::string> input_names2{ "x_4", "x_3", "x_2", "x_1" };
-    matrix mat2 = expr_normalize( input2, input_names2, true );
+    matrix mat2 = expr_normalize( input2, input_names2 );
     CHECK( stp::to_binary( mat2 ) == "1111111111110111" );
     CHECK( stp::to_hex( mat2 ) == "FFF7" );
     
     std::string input3 = "m_i m_c x_1 x_3 m_e x_2 m_n x_3";
     std::vector<std::string> input_names3{ "x_3", "x_2", "x_1" };
-    matrix mat3 = expr_normalize( input3, input_names3, true );
+    matrix mat3 = expr_normalize( input3, input_names3 );
     CHECK( stp::to_binary( mat3 ) == "01111111" );
     CHECK( stp::to_hex( mat3 ) == "7F" );
+}
+
+TEST_CASE( "STP expression to tt with more variables", "[expr]" )
+{
+    std::string input1 = "m_d m_c x_1 x_2 m_d m_c x_3 x_4 x_5";
+    std::vector<std::string> input_names1{ "x_5", "x_4", "x_3", "x_2", "x_1" };
+    matrix mat1 = expr_normalize( input1, input_names1 );
+    CHECK( stp::to_binary( mat1 ) == "11111111111111111111100010001000" );
+    CHECK( stp::to_hex( mat1 ) == "FFFFF888" );
 }

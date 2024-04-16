@@ -39,28 +39,18 @@ namespace stp
     return result;
   }
 
-  inline void print_binary( const matrix& mat, std::ostream& os = std::cout, bool reverse = false )
+  inline void print_binary( const matrix& mat, std::ostream& os = std::cout )
   {
-    if( reverse )
+    for( auto i = 0; i < mat.cols(); i++ )
     {
-      for( auto i = mat.cols() - 1; i >= 0; i-- )
-      {
-        os << mat( 0, i );
-      }
-    }
-    else
-    {
-      for( auto i = 0; i < mat.cols(); i++ )
-      {
-        os << mat( 0, i );
-      }
+      os << mat( 0, i );
     }
   }
 
-  inline std::string to_binary( const matrix& mat, bool reverse = false )
+  inline std::string to_binary( const matrix& mat )
   {
     std::stringstream st;
-    print_binary( mat, st, reverse );
+    print_binary( mat, st );
     return st.str();
   }
 
@@ -88,10 +78,10 @@ namespace stp
     }
   }
 
-  inline std::string to_hex( const matrix& mat, bool reverse = false )
+  inline std::string to_hex( const matrix& mat )
   {
     std::stringstream st;
-    print_hex( to_binary( mat, reverse ), st );
+    print_hex( to_binary( mat ), st );
     return st.str();
   }
 }
