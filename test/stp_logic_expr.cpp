@@ -112,6 +112,12 @@ TEST_CASE( "STP expression to tt with more variables", "[expr]" )
     matrix mat1 = expr_normalize( input1, input_names1 );
     CHECK( stp::to_binary( mat1 ) == "11111111111111111111100010001000" );
     CHECK( stp::to_hex( mat1 ) == "FFFFF888" );
+    
+    std::string input2 = "m_i m_p x_1 x_2 m_d m_c x_3 x_4 m_b x_5 x_6";
+    std::vector<std::string> input_names2{ "x_6", "x_5", "x_4", "x_3", "x_2", "x_1" };
+    matrix mat2 = expr_normalize( input2, input_names2 );
+    CHECK( stp::to_binary( mat2 ) == "1111100110011001111110011001100111111001100110011111111111111111" );
+    CHECK( stp::to_hex( mat2 ) == "F999F999F999FFFF" );
 }
 
 TEST_CASE( "STP calculation for mixed operators", "expr" )
