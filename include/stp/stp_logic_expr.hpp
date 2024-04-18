@@ -97,6 +97,15 @@ namespace stp
         Me = matrix::Zero( 2, 4 );
         Me << 1, 0, 0, 1, 0, 1, 1, 0;
         
+        Mp = matrix::Zero( 2, 4 );
+        Mp << 0, 1, 1, 0, 1, 0, 0, 1;
+        
+        Mt = matrix::Zero( 2, 4 );
+        Mt << 0, 1, 1, 1, 1, 0, 0, 0;
+        
+        Mb = matrix::Zero( 2, 4 );
+        Mb << 0, 0, 0, 1, 1, 1, 1, 0;
+        
         Mn = matrix::Zero( 2, 2 );
         Mn << 0, 1, 1, 0;
         
@@ -148,6 +157,9 @@ namespace stp
           else if( token == "m_n" ) { chain.push_back( Mn ); }
           else if( token == "m_i" ) { chain.push_back( Mi ); }
           else if( token == "m_e" ) { chain.push_back( Me ); }
+          else if( token == "m_p" ) { chain.push_back( Mp ); }
+          else if( token == "m_t" ) { chain.push_back( Mt ); }
+          else if( token == "m_b" ) { chain.push_back( Mb ); }
           else if( token.substr( 0, 1 ) == "I" ) //identity
           {
             auto dim = get_identity_dim( token );
@@ -416,10 +428,13 @@ namespace stp
       int num_vars_in_expr;
       matrix_chain chain;
       matrix Mr; //power reducing 
-      matrix Mc; //conjunctive
-      matrix Md; //disjunctive
-      matrix Mi; //implication
-      matrix Me; //equivalence
+      matrix Mc; //conjunctive, AND
+      matrix Md; //disjunctive, OR
+      matrix Mi; //implication, IMPLY
+      matrix Me; //equivalence, XNOR
+      matrix Mp; //XOR
+      matrix Mt; //NAND
+      matrix Mb; //NOR
       matrix Mn; //not
   };
 
