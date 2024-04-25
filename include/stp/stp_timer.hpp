@@ -9,7 +9,7 @@
  * copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following
  * conditions:
- *‘
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
  *
@@ -24,22 +24,41 @@
  */
 
 /*!
-  \file stp.hpp
-  \brief Main header file for stp
+  \file stp_timer.hpp
+  \brief header file for a simple timer
+  \author Zhufei Chu
+  \author Ruibing Zhang
 */
 
-#pragma once
+#pragma once 
 
-namespace stp
+#include <chrono>
+
+class stp_timer
 {
-  class MyStp
+public:
+  stp_timer(bool do_start = false)
   {
-    public:
-      void getVersion();
-  };
-}
+    if (do_start) start();
+  }
 
+  void start()
+  {
+    m_start_point = std::chrono::high_resolution_clock::now();
+  }
 
-#include "stp/stp_msg.hpp"
-#include "stp/stp_eigen.hpp"
-#include "stp/stp_utils.hpp"
+  uint64_t get_elapsed_ms()
+  {
+    auto now = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now - m_start_point).count();
+  }
+  
+  uint64_t get_elapsed_us()
+  {
+    auto now = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration_cast<std::chrono::microseconds>(now - m_start_point).count();
+  }
+
+private:
+  std::chrono::time_point<std::chrono::high_resolution_clock> m_start_point;
+};
