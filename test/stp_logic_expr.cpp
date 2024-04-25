@@ -120,7 +120,7 @@ TEST_CASE( "STP expression to tt with more variables", "[expr]" )
     CHECK( stp::to_hex( mat2 ) == "F999F999F999FFFF" );
 }
 
-TEST_CASE( "STP calculation for mixed operators", "expr" )
+TEST_CASE( "STP calculation for mixed operators", "[expr]" )
 {
   std::string input1 = "m_p m_n x_4 m_c x_2 m_i x_3 x_1"; 
   std::vector<std::string> input_names1{"x_1", "x_2", "x_3", "x_4" };
