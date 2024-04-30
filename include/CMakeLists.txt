@@ -19,4 +19,4 @@ if(NOT Eigen3_FOUND)
 endif()
 
 
-target_link_libraries(stp INTERFACE fmt Eigen3::Eigen)
+target_link_libraries(stp INTERFACE fmt Eigen3::Eigen pthread)

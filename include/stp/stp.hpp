@@ -43,3 +43,4 @@ namespace stp
 #include "stp/stp_msg.hpp"
 #include "stp/stp_eigen.hpp"
 #include "stp/stp_utils.hpp"
+#include "stp/stp_logic_expr.hpp"
