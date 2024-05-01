@@ -41,7 +41,6 @@
 using matrix = Eigen::MatrixXi;           // Defines the type of matrix to use
 using matrix_chain = std::vector<matrix>; // Defined matrix chain
 
-
 namespace stp
 {
 
@@ -51,12 +50,37 @@ namespace stp
     int start_index;
   };
 
-  class matrix_chain_multiply_by_multi_thread_impl
+  class subchain_multiply_impl
   {
     public:
-    matrix_chain_multiply_by_multi_thread_impl( const matrix_chain& mc, int num_threads, bool& verbose )
+    subchain_multiply_impl( const matrix_chain& mc, int num_threads, bool verbose )
       :mc( mc ), num_threads( num_threads ), verbose( verbose )
     {
+      max_num_threads = std::thread::hardware_concurrency();
+
+      modified_num_threads = num_threads;
+      
+      if( num_threads > max_num_threads )
+      {
+        modified_num_threads = max_num_threads;
+        if( verbose )
+        {
+          std::cout << "[w] The specified number of threads: " << num_threads << std::endl;
+          std::cout << "[w] The maximum number of threads suppoted by hardware: " << max_num_threads << std::endl;
+          std::cout << "[w] The specified number of threads is larger than the maximum one.\n";
+        }
+      }
+      
+      if( num_threads > mc.size() )
+      {
+        modified_num_threads = mc.size() / 2; 
+        if( verbose )
+        {
+          std::cout << "[w] The specified number of threads: " << num_threads << std::endl;
+          std::cout << "[w] The number of elements in the vector: " << mc.size() << std::endl;
+          std::cout << "[w] The specified number of threads is larger than the vector size.\n";
+        }
+      }
     }
 
      matrix_chain get_sub_chain( int start, int end )
@@ -87,20 +111,20 @@ namespace stp
      {
        std::vector<std::thread> threads;
 
-       int block_size = mc.size() / num_threads;
-       int remaining_elements = mc.size() % num_threads;
+       int block_size = mc.size() / modified_num_threads;
+       int remaining_elements = mc.size() % modified_num_threads;
 
-       std::vector<temp_result> part( num_threads );
+       std::vector<temp_result> part( modified_num_threads );
 
        if( verbose )
        {
-         std::cout << "[i] The matrix chain size: " << mc.size() << " #threads: " << num_threads << std::endl; 
+         std::cout << "[i] The matrix chain size: " << mc.size() << " real #threads: " << modified_num_threads << std::endl; 
        }
 
 
        int start = 0;
 
-       for( int i = 0; i < num_threads; i++ )
+       for( int i = 0; i < modified_num_threads; i++ )
        {
          int num_elements = block_size + ( i < remaining_elements ? 1 : 0 );
          int end = start + num_elements;
@@ -141,13 +165,21 @@ namespace stp
       matrix_chain mc;
       std::mutex mtx;
       int num_threads;
+      int max_num_threads;
+      int modified_num_threads;
       bool verbose;
   };
 
-  matrix_chain matrix_chain_multiply_by_multi_thread( const matrix_chain& mc, const int& num_threads, bool verbose = false )
+  matrix_chain subchain_multiply( const matrix_chain& mc, int num_threads, bool verbose = false )
   {
-    matrix_chain_multiply_by_multi_thread_impl p( mc, num_threads, verbose );
+    subchain_multiply_impl p( mc, num_threads, verbose );
     return p.run();
+  }
+  
+  matrix matrix_chain_multiply_by_multi_thread( const matrix_chain& mc, int num_threads, bool verbose = false )
+  {
+    auto sub_chain = subchain_multiply( mc, num_threads, verbose );
+    return matrix_chain_multiply( sub_chain );
   }
 
 } //end of namespace

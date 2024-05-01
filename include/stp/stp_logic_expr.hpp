@@ -382,82 +382,49 @@ namespace stp
         return result;
       }
 
+      matrix_chain normalizing()
+      {
+        if( is_valid_string() )
+        {
+          initialization();
+          auto expr_ops  = move_vars_to_rightside( all_tokens );
+          if( verbose )
+          {
+            std::cout << "[i] The strings after moving vars to the rightside: ";
+            print_strings( expr_ops );
+          }
+          
+          auto normal = sort_vars();
+          if( verbose )
+          {
+            std::cout << "[i] The strings after sorting vars:";
+            print_strings( normal );
+          }
+
+          normal.insert( normal.begin(), expr_ops.begin(), expr_ops.end() - num_vars_in_expr );
+          
+          if( verbose )
+          {
+            std::cout << "[i] The normalized strings: ";
+            print_strings( normal );
+          }
+          
+          auto mc = expr_to_chain( normal );
+
+          return mc; 
+        }
+        else
+        {
+          std::cerr << "[e] Input is not a valid string.\n";
+        }
+      }
+
       matrix run()
       {
-        if( is_valid_string() )
-        {
-          initialization();
-          auto expr_ops  = move_vars_to_rightside( all_tokens );
-          if( verbose )
-          {
-            std::cout << "[i] The strings after moving vars to the rightside: ";
-            print_strings( expr_ops );
-          }
-          
-          auto normal = sort_vars();
-          if( verbose )
-          {
-            std::cout << "[i] The strings after sorting vars:";
-            print_strings( normal );
-          }
-
-          normal.insert( normal.begin(), expr_ops.begin(), expr_ops.end() - num_vars_in_expr );
-          
-          if( verbose )
-          {
-            std::cout << "[i] The normalized strings: ";
-            print_strings( normal );
-          }
-          
-          auto mc = expr_to_chain( normal );
-
-          return matrix_chain_multiply( mc ); 
-        }
-        else
-        {
-          std::cerr << "[e] Input is not a valid string.\n";
-        }
-
+        auto mc = normalizing();
+        return matrix_chain_multiply( mc );
       }
 
-      //return a matrix chain
-      matrix_chain run_to_chain()
-      {
-        if( is_valid_string() )
-        {
-          initialization();
-          auto expr_ops  = move_vars_to_rightside( all_tokens );
-          if( verbose )
-          {
-            std::cout << "[i] The strings after moving vars to the rightside: ";
-            print_strings( expr_ops );
-          }
-          
-          auto normal = sort_vars();
-          if( verbose )
-          {
-            std::cout << "[i] The strings after sorting vars:";
-            print_strings( normal );
-          }
-
-          normal.insert( normal.begin(), expr_ops.begin(), expr_ops.end() - num_vars_in_expr );
-          
-          if( verbose )
-          {
-            std::cout << "[i] The normalized strings: ";
-            print_strings( normal );
-          }
-          
-          auto mc = expr_to_chain( normal );
-
-          return  mc; 
-        }
-        else
-        {
-          std::cerr << "[e] Input is not a valid string.\n";
-        }
-
-      }
     private:
       std::string expr;
       std::vector<std::string> all_tokens;
@@ -834,7 +801,7 @@ namespace stp
   matrix_chain expr_normalize_to_chain( const std::string& expr, const std::vector<std::string>& input_names, bool verbose = false )
   {
     expr_normalize_impl p( expr, input_names, verbose );
-    auto mc = p.run_to_chain();
+    auto mc = p.normalizing();
 
     if( verbose )
     {

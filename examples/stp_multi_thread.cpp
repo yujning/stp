@@ -11,8 +11,7 @@ int main()
   std::vector<std::string> input_names{ "x_1", "x_2", "x_3" };
   auto mc = stp::expr_normalize_to_chain( expr, input_names, true );
 
-  auto sub_chain = stp::matrix_chain_multiply_by_multi_thread( mc, 3 );
-  auto mat = stp::matrix_chain_multiply( sub_chain );
+  auto mat = stp::matrix_chain_multiply_by_multi_thread( mc, 10, true);
   
   std::cout << "The normal matrix for expression " << expr << " is " << std::endl;
   std::cout << mat << std::endl;
