@@ -382,7 +382,7 @@ namespace stp
         return result;
       }
 
-      matrix run()
+      matrix_chain normalizing()
       {
         if( is_valid_string() )
         {
@@ -411,13 +411,18 @@ namespace stp
           
           auto mc = expr_to_chain( normal );
 
-          return matrix_chain_multiply( mc ); 
+          return mc; 
         }
         else
         {
           std::cerr << "[e] Input is not a valid string.\n";
         }
+      }
 
+      matrix run()
+      {
+        auto mc = normalizing();
+        return matrix_chain_multiply( mc );
       }
 
     private:
@@ -791,6 +796,19 @@ namespace stp
     }
 
     return mat;
+  }
+  
+  matrix_chain expr_normalize_to_chain( const std::string& expr, const std::vector<std::string>& input_names, bool verbose = false )
+  {
+    expr_normalize_impl p( expr, input_names, verbose );
+    auto mc = p.normalizing();
+
+    if( verbose )
+    {
+      std::cout << "[i] The matrix chain size is " << mc.size() << std::endl;
+    }
+
+    return mc;
   }
   
   void test()
