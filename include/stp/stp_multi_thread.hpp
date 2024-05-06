@@ -101,7 +101,7 @@ namespace stp
        return sub_chain;
      }
 
-     matrix sub_chain_product( const auto& schain )
+     matrix sub_chain_product( const matrix_chain& schain )
      {
        std::lock_guard<std::mutex> lock( mtx );
        return matrix_chain_multiply( schain );
