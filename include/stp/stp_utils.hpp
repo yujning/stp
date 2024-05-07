@@ -8,11 +8,17 @@
 #include <vector>
 #include <unordered_map>
 #include <bitset>
+#include <numeric>
 
 using matrix = Eigen::MatrixXi;           // Defines the type of matrix to use
 
 namespace stp
 {
+  inline unsigned get_lcm( unsigned m, unsigned n )
+  {
+    return ( m * n ) / std::gcd( m, n );
+  }
+
   inline void print_strings( const std::vector<std::string>& inputs )
   {
     for( auto s : inputs )

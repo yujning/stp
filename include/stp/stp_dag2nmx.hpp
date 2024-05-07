@@ -69,7 +69,7 @@ namespace stp
 
         get_chain();
 
-        result = se.normalize_matrix( chain );
+        result = normalize_matrix( chain );
         return result;
       }
 
@@ -116,7 +116,7 @@ namespace stp
 
         chain = expr_to_chain( normal ); 
 
-        result = se.matrix_chain_multiply( chain );
+        result = matrix_chain_multiply( chain );
 
         return result;
       }
@@ -171,7 +171,7 @@ namespace stp
         }
       }
 
-      matrix get_matritx( const u_int32_t n )
+      matrix get_matritx( const uint32_t n )
       {
         if(circuit.is_pi(n)) 
         {
@@ -200,7 +200,7 @@ namespace stp
           {
             str.erase(str.begin());
             assert(std::stoi(str) == 2);
-            return se.generate_swap_matrix(2, 2);
+            return generate_swap_matrix(2, 2);
           }
         }
         return circuit.get_node(n).get_mtx();
@@ -381,7 +381,7 @@ namespace stp
         { 
           if( other_matrix[normal[i]].substr( 0, 1 ) == "I" )
           {
-            new_chain.push_back( se.kronecker_product( chain[i], chain[i+1]) );
+            new_chain.push_back( kronecker_product( chain[i], chain[i+1]) );
             i++;
           }
           else
@@ -429,7 +429,6 @@ namespace stp
 
     private:
       matrix result;
-      stp_eigen se;
       const stp_circuit& circuit;
       bool verbose;
       matrix_chain chain;

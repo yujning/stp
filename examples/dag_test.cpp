@@ -30,9 +30,10 @@ int main(int argc, char **argv)
 	std::cout << "***************************************" << std::endl;
 	circuit_normalize_impl cn(c, false);
 	std::string m1 = cn.run_str(false);
-	std::string m2 = cn.run_str(true);
-	std::cout << "old methon\n";
+	std::cout << "old methon\n";	
 	std::cout << m1 << "\n";
+	
+	std::string m2 = cn.run_str(true);
 	std::cout << "new methon\n";
 	std::cout << m2 << "\n";
 

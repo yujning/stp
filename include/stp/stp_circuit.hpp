@@ -24,7 +24,7 @@
  */
 
 /*!
-  \file stp_eigen.hpp
+  \file stp_circuit.hpp
   \brief header file for some basic STP operations
   \author Zhufei Chu
   \author Ruibing Zhang
@@ -118,10 +118,12 @@ public:
     m_outputs.reserve(20);
   }
 
-  stp_circuit(const std::string& str)  //表达式字符串构造
+  //表达式字符串构造 f = (a & b & ~c) | (a & ~c) | (~b & ~c)
+  stp_circuit(const std::string& str)
   {
 
-  }
+  } 
+
 #pragma region create Primary I / O and node
   uint32_t create_pi(const std::string& name) 
   {
@@ -277,26 +279,27 @@ private:
     int tt_length = 1 << inputs_num;
     matrix result(2, tt_length);
     uint32_t idx = 0;
+    std::string str = "";
+    // 0x???
     for(int i = 2; i < tt.size(); i++)
     {
-      char c = tt[i];
-      std::string str = hex2bin(c);
-      for(int i = str.size() - tt_length; i < str.size(); i++ )
-      {
-        char t = str[i];
-        if(t == '0') 
-        {
-          result(0, idx) = 0;
-          result(1, idx) = 1;
-        }
-        else
-        {
-          result(0, idx) = 1;
-          result(1, idx) = 0;         
-        }
-        idx++;
-      }
+      str += hex2bin(tt[i]);
     }    
+    for(int i = str.size() - tt_length; i < str.size(); i++ )
+    {
+      char t = str[i];
+      if(t == '0') 
+      {
+        result(0, idx) = 0;
+        result(1, idx) = 1;
+      }
+      else
+      {
+        result(0, idx) = 1;
+        result(1, idx) = 0;         
+      }
+      idx++;
+    }
     assert(idx == tt_length);
     return result;
   }
@@ -319,10 +322,10 @@ private:
     if(c == 'd' || c == 'D') return "1101";
     if(c == 'e' || c == 'E') return "1110";
     if(c == 'f' || c == 'F') return "1111";
-    std::cout << c << std::endl;
     assert(false);
     return "";
   }
+  
 public:
   void print_circuit()
   {
@@ -356,7 +359,7 @@ public:
   }
 
 private:
-	std::vector<node>     m_nodes;  
+	std::vector<node> m_nodes;  
 	std::vector<id> m_inputs;
 	std::vector<id> m_outputs;
 

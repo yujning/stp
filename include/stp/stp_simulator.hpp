@@ -46,12 +46,12 @@ class stp_simulator
 public:
   stp_simulator(const stp_circuit& circuit) : circuit(circuit) {} 
 
-  //full emulation, obtaining a truth table represented by a string
+  // full emulation, obtaining a truth table represented by a string
   std::string run()
   {
     init();
     sim(circuit.get_outputs()[0]);
-    // print_info();
+    print_info();
     return get_tt();
   }
 
@@ -155,6 +155,13 @@ private:
     }
   }
   
+  void reset()
+  {
+    patterns_num = 0u;
+    sim_info.resize(circuit.get_nodes().size(), std::vector<uint8_t>());
+    had_sim.resize(circuit.get_nodes().size(), false);
+  }
+
 private:
   const stp_circuit& circuit;
   std::vector<std::vector<uint8_t>> sim_info;

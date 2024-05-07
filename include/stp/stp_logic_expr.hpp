@@ -78,11 +78,7 @@ namespace stp
           
           auto mc = expr_to_chain( normal );
 
-          matrix result = se.matrix_chain_multiply( mc );
-          if( verbose )
-          {
-            se.print_stats();
-          }
+          matrix result = matrix_chain_multiply( mc );
           
           return result; 
         }
@@ -212,7 +208,7 @@ namespace stp
           }
           else if( token == "W2" )
           {
-            chain.push_back( se.generate_swap_matrix( 2, 2 ) );
+            chain.push_back( generate_swap_matrix( 2, 2 ) );
           }
           else if( token == "PR2" )
           {
@@ -231,7 +227,7 @@ namespace stp
         {
           if( normal[i].substr( 0, 1 ) == "I" )
           {
-            new_chain.push_back( se.kronecker_product( chain[i], chain[i+1] ) );
+            new_chain.push_back( kronecker_product( chain[i], chain[i+1] ) );
             i++;
           }
           else
@@ -424,7 +420,6 @@ namespace stp
       }
 
     private:
-      stp_eigen se;
       std::string expr;
       std::vector<std::string> all_tokens;
       std::vector<std::string> input_names; //the name of variables

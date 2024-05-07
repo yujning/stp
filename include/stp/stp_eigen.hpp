@@ -45,11 +45,6 @@ using matrix_chain = std::vector<matrix>; // Defined matrix chain
 namespace stp
 {
 
-  inline unsigned get_lcm( unsigned m, unsigned n )
-  {
-    return ( m * n ) / std::gcd( m, n );
-  }
-
   inline matrix generate_swap_matrix( const int& m, const int& n )
   {
     matrix swap_matrixXi = matrix::Zero( m * n, m * n );
@@ -93,326 +88,104 @@ namespace stp
     return KP;
   }
 
-  inline matrix semi_tensor_product( const matrix& A, const matrix& B )
+  enum class stp_method : uint8_t
   {
-    unsigned m = A.rows();
-    unsigned n = A.cols();
+    self_adaptation = 0,
+    definition_1 = 1,
+    definition_2 = 2,
+  };
 
-    unsigned p = B.rows();
-    unsigned q = B.cols();
-
-    unsigned t = get_lcm( n, p );
-
-    matrix Ia = matrix::Identity( t / n, t / n );
-    matrix Ib = matrix::Identity( t / p, t / p );
-
-    matrix KPa = kronecker_product( A, Ia );
-    matrix KPb = kronecker_product( B, Ib );
-
-    return KPa * KPb;
-  }
-
-  inline matrix semi_tensor_product2( const matrix& A, const matrix& B )
-  {
-    int m = A.rows(); 
-    int n = A.cols(); 
-
-    int p = B.rows(); 
-    int q = B.cols(); 
-
-    int row, col;
-
-    matrix result_matrix;
-
-    if (n % p == 0)
-    {
-      int times = n / p;
-      row = m;
-      col = times * q;
-      result_matrix = matrix::Zero(row, col);
-      for (int i = 0; i < q; ++i) 
-      {
-        for (int j = 0; j < p; ++j)
-        {
-          result_matrix.block(0, i * times, m, times) += B(j, i) * A.block(0, j * times, m, times);
-        }
-      }
-    }
-    else if (p % n == 0)
-    {
-      int times = p / n;
-      row = m * times;
-      col = q;
-      result_matrix = matrix::Zero(row, col);
-      for (int i = 0; i < m; ++i) //
-      {
-        for (int j = 0; j < n; ++j)
-        {
-          result_matrix.block(i * times, 0, times, q) += A(i, j) * B.block(j * times, 0, times, q);
-        }
-      }
-    }
-    else
-    {
-      std::cout << "matrix type error!" << std::endl;
-    }
-    return result_matrix;
-  }
-
-  inline matrix matrix_chain_multiply( const matrix_chain& mc )
-  {
-    assert( mc.size() > 0 );
-    matrix result_matrix;
-
-    if ( mc.size() == 1 )
-    {
-      return mc[0];
-    }
-
-    result_matrix = semi_tensor_product( mc[0], mc[1] );
-
-    for ( int i = 2; i < mc.size(); i++ )
-    {
-      result_matrix = semi_tensor_product( result_matrix, mc[i] );
-    }
-    return result_matrix;
-  }
-
-  class stp_eigen 
+  class semi_tensor_product_impl
   {
     public:
-      matrix generate_swap_matrix( const int& m, const int& n )
+      semi_tensor_product_impl( const matrix& A, const matrix& B, bool verbose, const stp_method method)
+       : A(A), B(B), verbose(verbose), method(method)
       {
-        matrix swap_matrixXi = matrix::Zero( m * n, m * n );
-        int p, q;
-        for ( int i = 0; i < m * n / 2 + 1; i++ )
-        {
-          p = i / m;
-          q = i % m;
-          int j = q * n + p;
-          swap_matrixXi( i, j ) = 1;
-          swap_matrixXi( m * n - 1 - i, m * n - 1 - j ) = 1;
-        }
-        return swap_matrixXi;
-      }
-
-      matrix kronecker_product( const matrix& A, const matrix& B )
-      {
-        /* trivial cases */
-        auto a_dimensions = A.rows() * A.cols();
-        auto b_dimensions = B.rows() * B.cols();
-
-        if ( a_dimensions == 1u )
-        {
-          return B;
-        }
-        if ( b_dimensions == 1u )
-        {
-          return A;
-        }
-
-        stp_timer timer(true);
-
-        matrix KP( A.rows() * B.rows(), A.cols() * B.cols() );
-
-        for ( int i = 0; i < A.rows(); ++i )
-        {
-          for ( int j = 0; j < A.cols(); ++j )
-          {
-            KP.block( i * B.rows(), j * B.cols(), B.rows(), B.cols() ) = A( i, j ) * B;
-          }
-        }
-
-        kp_time = timer.get_elapsed_ms();
-        total_time = kp_time + stp_time;
-
-        return KP;
+        m = A.rows();
+        n = A.cols();
+        p = B.rows();
+        q = B.cols();
       }
     
-      matrix semi_tensor_product( const matrix& A, const matrix& B )
+      matrix run()
       {
-        int n = A.cols(); 
-        int p = B.rows();
         matrix result;
-
-        stp_timer timer(true);
-
-        if(std::gcd( n, p ) < 4) 
+        uint64_t complexity_1 = cost1();
+        uint64_t complexity_2 = cost2();
+        switch (method)
         {
-          result = semi_tensor_product1( A, B );
-        }
-        else
-        {
-          result = semi_tensor_product2( A, B );
-        }
-
-        stp_time = timer.get_elapsed_ms();
-        total_time = kp_time + stp_time;
-
-        return result;
-      }
-      
-      matrix matrix_chain_multiply( const matrix_chain& mc )
-      {
-        assert( mc.size() > 0 );
-
-        if ( mc.size() == 1 )
-        {
-          return mc[0];
-        }
-
-        if ( mc.size() == 2 )
-        {
-          return semi_tensor_product( mc[0], mc[1] );
-        }
-
-        std::vector<int> orders = matrix_chain_order( mc );
-        return parse_multiplication_order(orders, mc);
-      }
-
-      matrix normalize_matrix( matrix_chain mc )
-      {
-        matrix Mr( 4, 2 ); // Reduced power matrix
-        Mr << 1, 0, 0, 0, 0, 0, 0, 1;
-
-        matrix I2( 2, 2 ); // Identity matrix
-        I2 << 1, 0, 0, 1;
-
-        matrix normal_matrix;
-        int p_variable;
-        int p;
-
-        int max = 0; // the max is the number of variable
-
-        for ( int i = 0; i < mc.size(); i++ )
-        {
-          if ( mc[i]( 0, 0 ) > max )
+        case stp_method::definition_1:
+          result = call_with_stopwatch( time, [&]() { return semi_tensor_product1(); } );
+          break;
+        case stp_method::definition_2:
+          result = call_with_stopwatch( time, [&]() { return semi_tensor_product2(); } );
+          break;
+        case stp_method::self_adaptation:
+          if(complexity_1 < complexity_2)
           {
-            max = mc[i]( 0, 0 );
-          }
-        }
-
-        std::vector<int> idx( max + 1 ); // id[0] is the max of idx
-        p_variable = mc.size() - 1;
-
-        while ( p_variable >= 0 )
-        {
-          bool find_variable = false;
-          matrix& matrix = mc[p_variable];
-          int var = get_variable( matrix );
-
-          if ( var != 0 ) // 1:find a variable
-          {
-            if ( idx[var] == 0 ) // the variable appears for the first time ：end : not_end
-            {
-              idx[var] = idx[0] + 1;
-              idx[0]++;
-
-              if ( p_variable == mc.size() - 1 ) // the variable shows in the end
-              {
-                mc.pop_back();
-                p_variable--;
-                continue;
-              }
-            }
-            else // the variable appears for the not first time
-            {
-              if ( idx[var] == idx[0] )
-              {
-                find_variable = true;
-              }
-              else
-              {
-                find_variable = true;
-                mc.push_back( generate_swap_matrix( 2, 1 << ( idx[0] - idx[var] ) ) );
-
-                for ( int i = 1; i <= max; i++ )
-                {
-                  if ( idx[i] != 0 && idx[i] > idx[var] )
-                    idx[i]--;
-                }
-
-                idx[var] = idx[0];
-              }
-            }
-
-            matrix_chain mc_temp;
-            mc_temp.clear();
-
-            for ( p = p_variable + 1; p < mc.size(); p++ )
-            {
-              mc_temp.push_back( mc[p] );
-            }
-
-            while ( p > p_variable + 1 )
-            {
-              mc.pop_back();
-              p--;
-            }
-
-            if ( mc_temp.size() > 0 )
-            {
-              mc.push_back( matrix_chain_multiply( mc_temp ) );
-            }
-
-            if ( p_variable != mc.size() - 1 )
-            {
-              mc[p_variable] = kronecker_product( I2, mc[p_variable + 1] );
-              mc.pop_back();
-            }
-
-            if ( find_variable )
-            {
-              mc.push_back( Mr );
-            }
-            continue;
+            result = call_with_stopwatch( time, [&]() { return semi_tensor_product1(); } );
           }
           else
           {
-            p_variable--;
+            result = call_with_stopwatch( time, [&]() { return semi_tensor_product2(); } );
           }
+          break; 
+        default:
+          break;
         }
 
-        for ( int i = max; i > 0; i-- ) 
+        if(verbose)
         {
-          mc.push_back( generate_swap_matrix( 2, pow( 2, idx[0] - idx[i] ) ) );
-
-          for ( int j = 1; j <= max; j++ )
-          {
-            if ( ( idx[j] != 0 ) && ( idx[j] > idx[i] ) )
-            {
-              idx[j]--;
-            }
-          }
-
-          idx[i] = max;
+          report(result);
         }
 
-        normal_matrix = matrix_chain_multiply( mc );
-        return normal_matrix;
-      }
-
-      void print_stats()
-      {
-        std::cout << "kronecker   product: " << kp_time << "ms" <<  std::endl;
-        std::cout << "semi_tensor product: " << stp_time << "ms" <<  std::endl;
-        std::cout << "              total: " << total_time << "ms" <<  std::endl;
+        return result;
       }
 
     private:
-      unsigned get_lcm( unsigned m, unsigned n )
+      uint32_t get_lcm( uint32_t m, uint32_t n )
       {
         return ( m * n ) / std::gcd( m, n );
       }
 
-      // the method used to implement semi tensor product
-      matrix semi_tensor_product1( const matrix& A, const matrix& B )
+      uint64_t cost1()
       {
-        unsigned m = A.rows();
-        unsigned n = A.cols();
+        uint64_t t = get_lcm(n, p);
+        uint64_t kp = 2 * ((m * t / n) * t + t * (t * q / p));
+        uint64_t total = kp + ((2 + 1) * t) * ((m * t / n) * (t * q / p));
+        return total;
+      }
 
-        unsigned p = B.rows();
-        unsigned q = B.cols();
+      uint64_t cost2()
+      {
+        uint64_t total;
+        if(n % p == 0)
+        {
+          uint64_t times  = n / p;
+          uint64_t row = m;
+          uint64_t col = times * q;
+
+          total = (2 + 1) * (m * times) * p * q;
+        }
+        else if(p % n == 0)
+        {
+          uint64_t times  = p / n;
+          uint64_t row = m * times;
+          uint64_t col = q;
+
+          total = (2 + 1) * (times * q) * m * n;
+        }
+        else
+        {
+          std::cout << "matrix type error!" << std::endl;
+          assert(false);
+        }
+        return total;
+      }
+
+      matrix semi_tensor_product1()
+      {
+        cost = cost1();
 
         unsigned t = get_lcm( n, p );
 
@@ -425,18 +198,10 @@ namespace stp
         return KPa * KPb;
       }
 
-      matrix semi_tensor_product2( const matrix& A, const matrix& B )
+      matrix semi_tensor_product2()
       {
-        int m = A.rows(); 
-        int n = A.cols(); 
-
-        int p = B.rows(); 
-        int q = B.cols(); 
-
         int row, col;
-
         matrix result_matrix;
-
         if (n % p == 0)
         {
           int times = n / p;
@@ -470,18 +235,128 @@ namespace stp
           std::cout << "matrix type error!" << std::endl;
           assert(false);
         }
+        cost = cost2();
         return result_matrix;
       }
 
-      // the method used to implement matrix chain multiply
-      std::vector<int> matrix_chain_order(const matrix_chain& mc)
+      void report(const matrix& result)
+      {
+        std::cout << "----------------------------------------------------------\n";
+        std::cout << "Dimension A: " << m << " x " << n << "\n";
+        std::cout << "Dimension B: " << p << " x " << q << "\n";
+        if(method == stp_method::definition_1)  
+        {
+          std::cout << "Mandatory use the method defined 1!\n";
+        }
+        else if(method == stp_method::definition_2)  
+        {
+          std::cout << "Mandatory use the method defined 2!\n";
+        }
+        else 
+        {
+          if(cost1() < cost2())
+          {
+            std::cout << "Use the method defined 1!\n";
+          }
+          else
+          {
+            std::cout << "Use the method defined 2!\n";
+          }
+        }
+        std::cout << "Dimension result: " << result.rows() << " x " << result.cols() << "\n";
+        std::cout << "total time: " << to_millisecond( time ) << "ms\n";
+        std::cout << "cost: " << cost << "\n";
+        std::cout << "ratio: " << 100000000 * to_millisecond( time ) / cost << "\n";
+        std::cout << "----------------------------------------------------------\n";
+      }
+
+    private:
+      const matrix& A;
+      const matrix& B;
+      const bool verbose {false};
+      const stp_method method;
+      uint32_t m{0u}, n{0u}, p{0u}, q{0u};
+      stopwatch<>::duration time{0};
+      uint64_t cost{0u};
+  };
+
+  /*! \brief Compute the semi-tensor product of matrix A and matrix B.
+    Example:
+      matrix A, B;
+      matrix result = semi_tensor_product(A, B);
+  */
+  inline matrix semi_tensor_product( const matrix& A, const matrix& B, const bool verbose = false, const stp_method method = stp_method::self_adaptation)
+  {
+    semi_tensor_product_impl stp_impl( A, B, verbose, method);
+    return stp_impl.run();
+  }
+
+  enum class mc_multiply_method : uint8_t
+  {
+    sequence = 0,
+    dynamic_programming = 1
+  };
+
+  class matrix_chain_multiply_impl
+  {
+    public:
+      matrix_chain_multiply_impl(const matrix_chain& mc, bool verbose, const mc_multiply_method method)
+      : mc(mc), verbose(verbose), method(method)
+      {
+        assert( mc.size() > 0 );
+      }
+
+      matrix run()
+      { 
+        switch (method)
+        {
+        case mc_multiply_method::sequence:
+          matrix_chain_multiply();
+          break;
+        case mc_multiply_method::dynamic_programming:
+          {
+            orders = matrix_chain_order();
+            result = parse_multiplication_order(orders);
+          }
+          break;       
+        default:
+          break;
+        }
+
+        if(verbose)
+        {
+          print();
+        }
+
+        return result;
+      }
+
+    private:
+      void matrix_chain_multiply()
+      {
+        if ( mc.size() == 1 )
+        {
+          result = mc[0];
+        }
+
+        total_cost += complexity_analysis(mc[0].rows(), mc[0].cols(), mc[1].rows(), mc[1].cols())[0];
+        result = call_with_stopwatch( time, [&]() { return semi_tensor_product( mc[0], mc[1] ); } );
+
+        for ( int i = 2; i < mc.size(); i++ )
+        {
+          total_cost += complexity_analysis(result.rows(), result.cols(), mc[i].rows(), mc[i].cols())[0];
+          result = call_with_stopwatch( time, [&]() { return semi_tensor_product( result, mc[i] ); } );
+        }
+      }
+
+      std::vector<int> matrix_chain_order()
       {
         struct mc_info
         {
-          uint32_t op_num = 0;  // Records the total complexity of the current operation
-          uint32_t flag   = 0;  // Record the matrix multiplication sequence
-          uint32_t row    = 0; 
-          uint32_t col    = 0;  
+          uint64_t op_num = 0;  // Records the total complexity of the current operation
+          uint64_t flag   = 0;  // Record the matrix multiplication sequence
+          uint64_t row    = 0; 
+          uint64_t col    = 0;  
         };
         
         int length = mc.size();
@@ -493,17 +368,17 @@ namespace stp
           dp[i][i].col = mc[i].cols();
         }
 
-        for (int l = 2; l <= length; l++) /* 矩阵链的长度 */
+        for (int l = 2; l <= length; l++) /* The length of the matrix chain */
         {
           for (int i = 0; i < length - l + 1; i++)
           {
             int j = i + l - 1; 
             dp[i][j].op_num = INT_MAX;
-            std::vector<int> temp;
+            std::vector<uint64_t> temp;
             for (int k = i; k < j; k++)
             {
               temp = complexity_analysis(dp[i][k].row, dp[i][k].col, dp[k+1][j].row,  dp[k+1][j].col);
-              int q = dp[i][k].op_num + dp[k+1][j].op_num + temp[0];
+              uint64_t q = dp[i][k].op_num + dp[k+1][j].op_num + temp[0];
               if (q < dp[i][j].op_num)
               {
                 dp[i][j].op_num = q;
@@ -516,33 +391,41 @@ namespace stp
         }
         
         // Parse the Dynamic programming table
-        std::vector<int> result;
+        std::vector<int> rule;
         std::vector<std::vector<int>> flags(length, std::vector<int>(length));
         for(int i = 0; i < length; i++)
           for(int j = 0; j < length; j++)
             flags[i][j] = dp[i][j].flag;
-        optimal_parens(flags, 0, length - 1, result);
-        return result;
+        optimal_parens(flags, 0, length - 1, rule);
+        return rule;
       }
 
-      std::vector<int> complexity_analysis(int m, int n, int p, int q)
+      std::vector<uint64_t> complexity_analysis(int m, int n, int p, int q)
       {
         /*
           temp[0] operational complexity
           temp[1] rows
           temp[2] cols
         */ 
-        std::vector<int> temp(3, 0);
+        std::vector<uint64_t> temp(3, 0u);
         if (n % p == 0)
         {
-          temp[0] = n * q / p;   
+          uint64_t times  = n / p;
+          uint64_t row = m;
+          uint64_t col = times * q;
+          // temp[0] = n * q / p;   
+          temp[0] = (2 + 1) * (m * times) * p * q;
           temp[1] = m;
           temp[2] = n * q / p;
           return temp;
         }
         else if (p % n == 0)
         {
-          temp[0] = q;
+          uint64_t times  = p / n;
+          uint64_t row = m * times;
+          uint64_t col = q;
+          // temp[0] = q;
+          temp[0] = (2 + 1) * (times * q) * m * n;
           temp[1] = m * p / n;
           temp[2] = q;
           return temp;
@@ -554,24 +437,24 @@ namespace stp
         return temp;
       }
 
-      void optimal_parens(const std::vector<std::vector<int>> &s, int i, int j, std::vector<int> &result)
+      void optimal_parens(const std::vector<std::vector<int>> &s, int i, int j, std::vector<int> &rule)
       {
         if (i == j)
-            result.push_back(i);
+          rule.push_back(i);
         else
         {
-          result.push_back(-1);
-          optimal_parens(s, i, s[i][j], result);
-          optimal_parens(s, s[i][j] + 1, j, result);
-          result.push_back(-2);
+          rule.push_back(-1);
+          optimal_parens(s, i, s[i][j], rule);
+          optimal_parens(s, s[i][j] + 1, j, rule);
+          rule.push_back(-2);
         }
       }
 
-      matrix parse_multiplication_order(std::vector<int>& order, const std::vector<matrix>& mc)
+      matrix parse_multiplication_order(std::vector<int> order)
       {
         std::vector<matrix> stacks;
         std::vector<int> idx;
-        for (unsigned int i = 0; i < order.size(); ++i)
+        for (int i = 0; i < order.size(); ++i)
         {
           if (order[i] == -1)
             idx.push_back(i);
@@ -579,7 +462,10 @@ namespace stp
           {
             if (stacks.size() >= 2)
             {
-              stacks[stacks.size() - 2] = semi_tensor_product(stacks[stacks.size() - 2], stacks[stacks.size() - 1]);
+              matrix& A = stacks[stacks.size() - 2];
+              matrix& B = stacks[stacks.size() - 1];
+              total_cost += complexity_analysis(A.rows(), A.cols(), B.rows(), B.cols())[0];
+              A = call_with_stopwatch( time, [&]() {  return semi_tensor_product(A, B);  });
               stacks.pop_back();
             }
             order.erase(order.begin() + idx.back(), order.begin() + i);
@@ -593,28 +479,42 @@ namespace stp
         return stacks[0];
       }
 
-      int get_variable( const matrix& mat )
+      void print()
       {
-        if( is_variable( mat ) )
+        if(method == mc_multiply_method::dynamic_programming)
         {
-          return mat( 0, 0 );
+          std::cout << "use dynamic_programming!\n";
+          for(int t : orders)
+          {
+            if(t == -1)        std::cout << "(";
+            else if(t == -2)   std::cout << ")";
+            else               std::cout << "M" << t;
+          }
+          std::cout << "\n";
         }
-        else
-        {
-          return 0;
-        }
+        else  
+          std::cout << "use sequence\n";
+        std::cout << "total time: " << to_millisecond( time ) << "ms\n";
+        std::cout << "total cost: " << total_cost << "\n";
+        std::cout << "1000000 * (times/total_cost) = " << 1000000 * to_millisecond( time ) / total_cost << "\n";
       }
 
-      bool is_variable( const matrix& mat )
-      {
-        return mat.rows() == 2 && mat.cols() == 1;
-      }
-      
-    private:
-      uint64_t stp_time = 0u;
-      uint64_t kp_time = 0u;
-      uint64_t total_time = 0;
+    private:  
+      const bool verbose {false};
+      const mc_multiply_method method {0u};
+      const matrix_chain& mc;
+      matrix result;
+      std::vector<int> orders;
+      stopwatch<>::duration time{0};
+      uint64_t total_cost{0u};
   };
+
+  /**/
+  inline matrix matrix_chain_multiply( const matrix_chain& mc, const bool verbose = false, const mc_multiply_method method = mc_multiply_method::dynamic_programming)
+  {
+    matrix_chain_multiply_impl mcm_impl(mc, verbose, method);
+    return mcm_impl.run();
+  }
 
 } // namespace stp
 
