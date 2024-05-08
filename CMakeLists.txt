@@ -11,6 +11,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(STP_EXAMPLES "Build examples" ON)
 option(STP_TEST "Build tests" ON)
 
+add_compile_options(-O4 -W -Wall -Wextra)
+
 # Add main include files
 add_subdirectory(include)
 

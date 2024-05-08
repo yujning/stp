@@ -52,6 +52,50 @@ namespace stp
       {
       }
 
+      matrix_chain normalizing()
+      {
+        if( is_valid_string() )
+        {
+          initialization();
+          auto expr_ops  = move_vars_to_rightside( all_tokens );
+          if( verbose )
+          {
+            std::cout << "[i] The strings after moving vars to the rightside: ";
+            print_strings( expr_ops );
+          }
+          
+          auto normal = sort_vars();
+          if( verbose )
+          {
+            std::cout << "[i] The strings after sorting vars:";
+            print_strings( normal );
+          }
+
+          normal.insert( normal.begin(), expr_ops.begin(), expr_ops.end() - num_vars_in_expr );
+          
+          if( verbose )
+          {
+            std::cout << "[i] The normalized strings: ";
+            print_strings( normal );
+          }
+          
+          auto mc = expr_to_chain( normal );
+
+          return mc; 
+        }
+        else
+        {
+          std::cerr << "[e] Input is not a valid string.\n";
+        }
+      }
+
+      matrix run()
+      {
+        auto mc = normalizing();
+        return matrix_chain_multiply( mc );
+      }
+
+    private:
       bool is_operation( const std::string& word )
       {
         return word.substr( 0, 2 ) == "m_";
@@ -116,17 +160,17 @@ namespace stp
 
       matrix get_variable_matrix( const std::string& var )
       {
-          for( int i = 0; i < input_names.size(); i++ )
+        for( int i = 0; i < input_names.size(); i++ )
+        {
+          if( input_names[i] == var )
           {
-            if( input_names[i] == var )
-            {
-              matrix mv( 2, 1 );
-              mv << i + 1, i + 1;
-              return mv;
-            }
+            matrix mv( 2, 1 );
+            mv << i + 1, i + 1;
+            return mv;
           }
+        }
 
-          assert( false );
+        assert( false );
       }
 
       int get_identity_dim( const std::string& token )
@@ -382,49 +426,6 @@ namespace stp
         return result;
       }
 
-      matrix_chain normalizing()
-      {
-        if( is_valid_string() )
-        {
-          initialization();
-          auto expr_ops  = move_vars_to_rightside( all_tokens );
-          if( verbose )
-          {
-            std::cout << "[i] The strings after moving vars to the rightside: ";
-            print_strings( expr_ops );
-          }
-          
-          auto normal = sort_vars();
-          if( verbose )
-          {
-            std::cout << "[i] The strings after sorting vars:";
-            print_strings( normal );
-          }
-
-          normal.insert( normal.begin(), expr_ops.begin(), expr_ops.end() - num_vars_in_expr );
-          
-          if( verbose )
-          {
-            std::cout << "[i] The normalized strings: ";
-            print_strings( normal );
-          }
-          
-          auto mc = expr_to_chain( normal );
-
-          return mc; 
-        }
-        else
-        {
-          std::cerr << "[e] Input is not a valid string.\n";
-        }
-      }
-
-      matrix run()
-      {
-        auto mc = normalizing();
-        return matrix_chain_multiply( mc );
-      }
-
     private:
       std::string expr;
       std::vector<std::string> all_tokens;
@@ -507,6 +508,7 @@ namespace stp
 
     return result;
   }
+
   matrix normalize_matrix( matrix_chain mc )
   {
     matrix Mr( 4, 2 ); // Reduced power matrix

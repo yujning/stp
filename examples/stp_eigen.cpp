@@ -13,7 +13,7 @@ int main()
   Theta1 << 1, 0;
 
   MatrixXi Theta2( 2, 1 );
-  Theta1 << 0, 1;
+  Theta2 << 0, 1;
 
   MatrixXi A = stp::kronecker_product( I, Theta1 );
   MatrixXi B = stp::kronecker_product( I, Theta2 );

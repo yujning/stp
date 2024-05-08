@@ -8,11 +8,17 @@
 #include <vector>
 #include <unordered_map>
 #include <bitset>
+#include <numeric>
 
 using matrix = Eigen::MatrixXi;           // Defines the type of matrix to use
 
 namespace stp
 {
+  inline unsigned get_lcm( unsigned m, unsigned n )
+  {
+    return ( m * n ) / std::gcd( m, n );
+  }
+
   inline void print_strings( const std::vector<std::string>& inputs )
   {
     for( auto s : inputs )
@@ -28,7 +34,7 @@ namespace stp
     std::string token;
     std::vector<std::string> result;
 
-    while (iss >> token) 
+    while (iss >> token)  
     {
       if (token.compare(0, prefix.size(), prefix) == 0) 
       {
@@ -83,6 +89,36 @@ namespace stp
     std::stringstream st;
     print_hex( to_binary( mat ), st );
     return st.str();
+  }
+
+  inline std::vector<std::string> str_split(const std::string& input, const std::string& pred)
+  {
+    std::vector<std::string> result;
+    std::string temp{""};
+    unsigned count1 = input.size();
+    unsigned count2 = pred.size();
+    unsigned j;
+    for (size_t i = 0; i < count1; i++)
+    {
+      for(j = 0; j < count2; j++)
+      {
+        if(input[i] == pred[j])
+        {
+          break;
+        }
+      }
+      if(j == count2)
+        temp += input[i];
+      else
+      {
+        if(!temp.empty())
+        {
+          result.push_back(temp);
+          temp.clear();
+        }
+      }
+    }
+    return result;
   }
 }
 
