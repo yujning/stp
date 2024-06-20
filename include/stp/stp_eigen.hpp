@@ -337,6 +337,7 @@ namespace stp
         if ( mc.size() == 1 )
         {
           result = mc[0];
+          return;
         }
 
         total_cost += complexity_analysis(mc[0].rows(), mc[0].cols(), mc[1].rows(), mc[1].cols())[0];
@@ -373,7 +374,7 @@ namespace stp
           for (int i = 0; i < length - l + 1; i++)
           {
             int j = i + l - 1; 
-            dp[i][j].op_num = INT_MAX;
+            dp[i][j].op_num = UINT64_MAX;
             std::vector<uint64_t> temp;
             for (int k = i; k < j; k++)
             {
