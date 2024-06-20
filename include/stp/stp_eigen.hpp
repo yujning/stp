@@ -99,7 +99,7 @@ namespace stp
   {
     public:
       semi_tensor_product_impl( const matrix& A, const matrix& B, bool verbose, const stp_method method)
-       : A(A), B(B), verbose(verbose), method(method)
+       : A( A ), B( B ), verbose( verbose ), method( method )
       {
         m = A.rows();
         n = A.cols();
@@ -112,31 +112,35 @@ namespace stp
         matrix result;
         uint64_t complexity_1 = cost1();
         uint64_t complexity_2 = cost2();
+
         switch (method)
         {
-        case stp_method::definition_1:
-          result = call_with_stopwatch( time, [&]() { return semi_tensor_product1(); } );
-          break;
-        case stp_method::definition_2:
-          result = call_with_stopwatch( time, [&]() { return semi_tensor_product2(); } );
-          break;
-        case stp_method::self_adaptation:
-          if(complexity_1 < complexity_2)
-          {
+          case stp_method::definition_1:
             result = call_with_stopwatch( time, [&]() { return semi_tensor_product1(); } );
-          }
-          else
-          {
+            break;
+
+          case stp_method::definition_2:
             result = call_with_stopwatch( time, [&]() { return semi_tensor_product2(); } );
-          }
-          break; 
-        default:
-          break;
+            break;
+
+          case stp_method::self_adaptation:
+            if(complexity_1 < complexity_2)
+            {
+              result = call_with_stopwatch( time, [&]() { return semi_tensor_product1(); } );
+            }
+            else
+            {
+              result = call_with_stopwatch( time, [&]() { return semi_tensor_product2(); } );
+            }
+            break;
+
+          default:
+            break;
         }
 
         if(verbose)
         {
-          report(result);
+          report( result );
         }
 
         return result;
@@ -150,30 +154,30 @@ namespace stp
 
       uint64_t cost1()
       {
-        uint64_t t = get_lcm(n, p);
-        uint64_t kp = 2 * ((m * t / n) * t + t * (t * q / p));
-        uint64_t total = kp + ((2 + 1) * t) * ((m * t / n) * (t * q / p));
+        uint64_t t = get_lcm( n, p );
+        uint64_t kp = 2 * ( ( m * t / n ) * t + t * ( t * q / p ) );
+        uint64_t total = kp + ( ( 2 + 1 ) * t ) * ( ( m * t / n) * ( t * q / p) );
         return total;
       }
 
       uint64_t cost2()
       {
         uint64_t total;
-        if(n % p == 0)
+        if( n % p == 0 )
         {
           uint64_t times  = n / p;
           uint64_t row = m;
           uint64_t col = times * q;
 
-          total = (2 + 1) * (m * times) * p * q;
+          total = ( 2 + 1 ) * ( m * times ) * p * q;
         }
-        else if(p % n == 0)
+        else if( p % n == 0 )
         {
           uint64_t times  = p / n;
           uint64_t row = m * times;
           uint64_t col = q;
 
-          total = (2 + 1) * (times * q) * m * n;
+          total = ( 2 + 1 ) * ( times * q ) * m * n;
         }
         else
         {
@@ -202,31 +206,33 @@ namespace stp
       {
         int row, col;
         matrix result_matrix;
-        if (n % p == 0)
+
+        if ( n % p == 0 )
         {
           int times = n / p;
           row = m;
           col = times * q;
           result_matrix = matrix::Zero(row, col);
+          
           for (int i = 0; i < q; ++i) 
           {
             for (int j = 0; j < p; ++j)
             {
-              result_matrix.block(0, i * times, m, times) += B(j, i) * A.block(0, j * times, m, times);
+              result_matrix.block( 0, i * times, m, times ) += B( j, i ) * A.block( 0, j * times, m, times );
             }
           }
         }
-        else if (p % n == 0)
+        else if ( p % n == 0 )
         {
           int times = p / n;
           row = m * times;
           col = q;
-          result_matrix = matrix::Zero(row, col);
-          for (int i = 0; i < m; ++i) 
+          result_matrix = matrix::Zero( row, col );
+          for ( int i = 0; i < m; ++i ) 
           {
-            for (int j = 0; j < n; ++j)
+            for ( int j = 0; j < n; ++j )
             {
-              result_matrix.block(i * times, 0, times, q) += A(i, j) * B.block(j * times, 0, times, q);
+              result_matrix.block( i * times, 0, times, q ) += A(i, j) * B.block( j * times, 0, times, q );
             }
           }
         }
@@ -235,6 +241,7 @@ namespace stp
           std::cout << "matrix type error!" << std::endl;
           assert(false);
         }
+
         cost = cost2();
         return result_matrix;
       }
@@ -244,25 +251,27 @@ namespace stp
         std::cout << "----------------------------------------------------------\n";
         std::cout << "Dimension A: " << m << " x " << n << "\n";
         std::cout << "Dimension B: " << p << " x " << q << "\n";
-        if(method == stp_method::definition_1)  
+        
+        if( method == stp_method::definition_1 )  
         {
-          std::cout << "Mandatory use the method defined 1!\n";
+          std::cout << "Use the definition 1!\n";
         }
-        else if(method == stp_method::definition_2)  
+        else if( method == stp_method::definition_2 )  
         {
-          std::cout << "Mandatory use the method defined 2!\n";
+          std::cout << "Use the definition 2!\n";
         }
         else 
         {
-          if(cost1() < cost2())
+          if( cost1() < cost2() )
           {
-            std::cout << "Use the method defined 1!\n";
+            std::cout << "Use the definition 1!\n";
           }
           else
           {
-            std::cout << "Use the method defined 2!\n";
+            std::cout << "Use the definition 2!\n";
           }
         }
+
         std::cout << "Dimension result: " << result.rows() << " x " << result.cols() << "\n";
         std::cout << "total time: " << to_millisecond( time ) << "ms\n";
         std::cout << "cost: " << cost << "\n";
@@ -300,27 +309,29 @@ namespace stp
   class matrix_chain_multiply_impl
   {
     public:
-      matrix_chain_multiply_impl(const matrix_chain& mc, bool verbose, const mc_multiply_method method)
-      : mc(mc), verbose(verbose), method(method)
+      matrix_chain_multiply_impl( const matrix_chain& mc, bool verbose, const mc_multiply_method method )
+      : mc( mc ), verbose( verbose ), method( method )
       {
         assert( mc.size() > 0 );
       }
 
       matrix run()
       { 
-        switch (method)
+        switch ( method )
         {
-        case mc_multiply_method::sequence:
-          matrix_chain_multiply();
-          break;
-        case mc_multiply_method::dynamic_programming:
-          {
-            orders = matrix_chain_order();
-            result = parse_multiplication_order(orders);
-          }
-          break;       
-        default:
-          break;
+          case mc_multiply_method::sequence:
+            matrix_chain_multiply();
+            break;
+
+          case mc_multiply_method::dynamic_programming:
+            {
+              orders = matrix_chain_order();
+              result = parse_multiplication_order(orders);
+            }
+            break;
+
+          default:
+            break;
         }
 
         if(verbose)
@@ -340,12 +351,12 @@ namespace stp
           return;
         }
 
-        total_cost += complexity_analysis(mc[0].rows(), mc[0].cols(), mc[1].rows(), mc[1].cols())[0];
+        total_cost += complexity_analysis( mc[0].rows(), mc[0].cols(), mc[1].rows(), mc[1].cols() )[0];
         result = call_with_stopwatch( time, [&]() { return semi_tensor_product( mc[0], mc[1] ); } );
 
         for ( int i = 2; i < mc.size(); i++ )
         {
-          total_cost += complexity_analysis(result.rows(), result.cols(), mc[i].rows(), mc[i].cols())[0];
+          total_cost += complexity_analysis( result.rows(), result.cols(), mc[i].rows(), mc[i].cols() )[0];
           result = call_with_stopwatch( time, [&]() { return semi_tensor_product( result, mc[i] ); } );
         }
       }
@@ -361,7 +372,7 @@ namespace stp
         };
         
         int length = mc.size();
-        std::vector<std::vector<mc_info>> dp(length, std::vector<mc_info>(length));
+        std::vector<std::vector<mc_info>> dp( length, std::vector<mc_info>( length ) );
 
         for (int i = 0; i < length; i++)
         {
@@ -378,8 +389,9 @@ namespace stp
             std::vector<uint64_t> temp;
             for (int k = i; k < j; k++)
             {
-              temp = complexity_analysis(dp[i][k].row, dp[i][k].col, dp[k+1][j].row,  dp[k+1][j].col);
+              temp = complexity_analysis( dp[i][k].row, dp[i][k].col, dp[k+1][j].row, dp[k+1][j].col );
               uint64_t q = dp[i][k].op_num + dp[k+1][j].op_num + temp[0];
+
               if (q < dp[i][j].op_num)
               {
                 dp[i][j].op_num = q;
@@ -395,8 +407,12 @@ namespace stp
         std::vector<int> rule;
         std::vector<std::vector<int>> flags(length, std::vector<int>(length));
         for(int i = 0; i < length; i++)
+        {
           for(int j = 0; j < length; j++)
+          {
             flags[i][j] = dp[i][j].flag;
+          }
+        }
         optimal_parens(flags, 0, length - 1, rule);
         return rule;
       }
@@ -408,12 +424,14 @@ namespace stp
           temp[1] rows
           temp[2] cols
         */ 
-        std::vector<uint64_t> temp(3, 0u);
+        std::vector<uint64_t> temp( 3, 0u );
+        
         if (n % p == 0)
         {
           uint64_t times  = n / p;
           uint64_t row = m;
           uint64_t col = times * q;
+
           // temp[0] = n * q / p;   
           temp[0] = (2 + 1) * (m * times) * p * q;
           temp[1] = m;
@@ -435,30 +453,36 @@ namespace stp
         {
           std::cout << "matrix type error!" << std::endl;
         }
+
         return temp;
       }
 
-      void optimal_parens(const std::vector<std::vector<int>> &s, int i, int j, std::vector<int> &rule)
+      void optimal_parens( const std::vector<std::vector<int>> &s, int i, int j, std::vector<int> &rule )
       {
         if (i == j)
-          rule.push_back(i);
+        {
+          rule.push_back( i );
+        }
         else
         {
-          rule.push_back(-1);
-          optimal_parens(s, i, s[i][j], rule);
-          optimal_parens(s, s[i][j] + 1, j, rule);
-          rule.push_back(-2);
+          rule.push_back( -1 );
+          optimal_parens( s, i, s[i][j], rule );
+          optimal_parens( s, s[i][j] + 1, j, rule );
+          rule.push_back( -2 );
         }
       }
 
-      matrix parse_multiplication_order(std::vector<int> order)
+      matrix parse_multiplication_order( std::vector<int> order )
       {
         std::vector<matrix> stacks;
         std::vector<int> idx;
-        for (int i = 0; i < order.size(); ++i)
+
+        for ( int i = 0; i < order.size(); ++i )
         {
           if (order[i] == -1)
+          {
             idx.push_back(i);
+          }
           else if (order[i] == -2)
           {
             if (stacks.size() >= 2)
@@ -469,35 +493,41 @@ namespace stp
               A = call_with_stopwatch( time, [&]() {  return semi_tensor_product(A, B);  });
               stacks.pop_back();
             }
+
             order.erase(order.begin() + idx.back(), order.begin() + i);
             i = idx.back();
             idx.pop_back();
           }
           else
+          {
             stacks.push_back(mc[order[i]]);
+          }
         }
+
         assert(stacks.size() == 1);
         return stacks[0];
       }
 
       void print()
       {
-        if(method == mc_multiply_method::dynamic_programming)
+        if( method == mc_multiply_method::dynamic_programming )
         {
           std::cout << "use dynamic_programming!\n";
-          for(int t : orders)
+          for( int t : orders )
           {
-            if(t == -1)        std::cout << "(";
-            else if(t == -2)   std::cout << ")";
-            else               std::cout << "M" << t;
+            if( t == -1 )        std::cout << "(";
+            else if( t == -2 )   std::cout << ")";
+            else                 std::cout << "M" << t;
           }
           std::cout << "\n";
         }
-        else  
+        else 
+        {
           std::cout << "use sequence\n";
-        std::cout << "total time: " << to_millisecond( time ) << "ms\n";
-        std::cout << "total cost: " << total_cost << "\n";
-        std::cout << "1000000 * (times/total_cost) = " << 1000000 * to_millisecond( time ) / total_cost << "\n";
+          std::cout << "total time: " << to_millisecond( time ) << "ms\n";
+          std::cout << "total cost: " << total_cost << "\n";
+          std::cout << "1000000 * (times/total_cost) = " << 1000000 * to_millisecond( time ) / total_cost << "\n";
+        }
       }
 
     private:  
