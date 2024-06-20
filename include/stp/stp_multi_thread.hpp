@@ -179,7 +179,7 @@ namespace stp
   matrix matrix_chain_multiply_by_multi_thread( const matrix_chain& mc, int num_threads, bool verbose = false )
   {
     auto sub_chain = subchain_multiply( mc, num_threads, verbose );
-    return matrix_chain_multiply( sub_chain );
+    return matrix_chain_multiply( sub_chain, false, stp::mc_multiply_method::dynamic_programming);
   }
 
 } //end of namespace
