@@ -33,6 +33,10 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
+
+//include a kronecker product headfile (offically unsupported in eigen)
+#include <unsupported/Eigen/KroneckerProduct>
 
 #include <iostream> 
 #include <numeric>
@@ -60,6 +64,37 @@ namespace stp
     return swap_matrixXi;
   }
 
+  inline bool is_identity_matrix( const matrix& A )
+  {
+    if( A.rows() != A.cols() )
+    {
+      return false;
+    }
+
+    for( int i = 0u; i < A.rows(); i++ )
+    {
+      for( int j = 0u; j < A.cols(); j++ )
+      {
+        if( i == j )
+        {
+          if( A( i , j ) != 1 )
+          {
+            return false;
+          }
+        }
+        else
+        {
+          if( A( i , j ) != 0 )
+          {
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
   inline matrix kronecker_product( const matrix& A, const matrix& B )
   {
     /* trivial cases */
@@ -75,18 +110,20 @@ namespace stp
       return A;
     }
 
-    matrix KP( A.rows() * B.rows(), A.cols() * B.cols() );
 
-    for ( int i = 0; i < A.rows(); ++i )
+    if( is_identity_matrix( A ) )
     {
-      for ( int j = 0; j < A.cols(); ++j )
-      {
-        KP.block( i * B.rows(), j * B.cols(), B.rows(), B.cols() ) = A( i, j ) * B;
-      }
+      Eigen::SparseMatrix<int> sparse_A = A.sparseView();
+      Eigen::SparseMatrix<int> KP = Eigen::kroneckerProduct( sparse_A, B );
+      matrix result( KP );
+      return KP;
     }
-
-    return KP;
+    else
+    {
+      return  Eigen::kroneckerProduct( A, B );
+    }
   }
+  
 
   enum class stp_method : uint8_t
   {
