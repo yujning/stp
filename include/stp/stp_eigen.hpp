@@ -309,10 +309,8 @@ namespace stp
           }
         }
 
-        std::cout << "Dimension result: " << result.rows() << " x " << result.cols() << "\n";
-        std::cout << "total time: " << to_millisecond( time ) << "ms\n";
-        std::cout << "cost: " << cost << "\n";
-        std::cout << "ratio: " << 100000000 * to_millisecond( time ) / cost << "\n";
+        std::cout << "Dimensions: " << result.rows() << " x " << result.cols() << "\n";
+        std::cout << "Total time: " << to_millisecond( time ) << "ms\n";
         std::cout << "----------------------------------------------------------\n";
       }
 
@@ -549,7 +547,7 @@ namespace stp
       {
         if( method == mc_multiply_method::dynamic_programming )
         {
-          std::cout << "use dynamic_programming!\n";
+          std::cout << "Use dynamic programming method for matrix chain multiply.\n";
           for( int t : orders )
           {
             if( t == -1 )        std::cout << "(";
@@ -557,13 +555,12 @@ namespace stp
             else                 std::cout << "M" << t;
           }
           std::cout << "\n";
+          std::cout << "Total time: " << to_millisecond( time ) << "ms\n";
         }
         else 
         {
-          std::cout << "use sequence\n";
-          std::cout << "total time: " << to_millisecond( time ) << "ms\n";
-          std::cout << "total cost: " << total_cost << "\n";
-          std::cout << "1000000 * (times/total_cost) = " << 1000000 * to_millisecond( time ) / total_cost << "\n";
+          std::cout << "Use sequence method for matrix chain multiply.\n";
+          std::cout << "Total time: " << to_millisecond( time ) << "ms\n";
         }
       }
 
