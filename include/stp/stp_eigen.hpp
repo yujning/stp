@@ -33,6 +33,10 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
+
+//include a kronecker product headfile (offically unsupported in eigen)
+#include <unsupported/Eigen/KroneckerProduct>
 
 #include <iostream> 
 #include <numeric>
@@ -60,6 +64,37 @@ namespace stp
     return swap_matrixXi;
   }
 
+  inline bool is_identity_matrix( const matrix& A )
+  {
+    if( A.rows() != A.cols() )
+    {
+      return false;
+    }
+
+    for( int i = 0u; i < A.rows(); i++ )
+    {
+      for( int j = 0u; j < A.cols(); j++ )
+      {
+        if( i == j )
+        {
+          if( A( i , j ) != 1 )
+          {
+            return false;
+          }
+        }
+        else
+        {
+          if( A( i , j ) != 0 )
+          {
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
   inline matrix kronecker_product( const matrix& A, const matrix& B )
   {
     /* trivial cases */
@@ -75,18 +110,20 @@ namespace stp
       return A;
     }
 
-    matrix KP( A.rows() * B.rows(), A.cols() * B.cols() );
 
-    for ( int i = 0; i < A.rows(); ++i )
+    if( is_identity_matrix( A ) )
     {
-      for ( int j = 0; j < A.cols(); ++j )
-      {
-        KP.block( i * B.rows(), j * B.cols(), B.rows(), B.cols() ) = A( i, j ) * B;
-      }
+      Eigen::SparseMatrix<int> sparse_A = A.sparseView();
+      Eigen::SparseMatrix<int> KP = Eigen::kroneckerProduct( sparse_A, B );
+      matrix result( KP );
+      return KP;
     }
-
-    return KP;
+    else
+    {
+      return  Eigen::kroneckerProduct( A, B );
+    }
   }
+  
 
   enum class stp_method : uint8_t
   {
@@ -272,10 +309,8 @@ namespace stp
           }
         }
 
-        std::cout << "Dimension result: " << result.rows() << " x " << result.cols() << "\n";
-        std::cout << "total time: " << to_millisecond( time ) << "ms\n";
-        std::cout << "cost: " << cost << "\n";
-        std::cout << "ratio: " << 100000000 * to_millisecond( time ) / cost << "\n";
+        std::cout << "Dimensions: " << result.rows() << " x " << result.cols() << "\n";
+        std::cout << "Total time: " << to_millisecond( time ) << "ms\n";
         std::cout << "----------------------------------------------------------\n";
       }
 
@@ -512,7 +547,7 @@ namespace stp
       {
         if( method == mc_multiply_method::dynamic_programming )
         {
-          std::cout << "use dynamic_programming!\n";
+          std::cout << "Use dynamic programming method for matrix chain multiply.\n";
           for( int t : orders )
           {
             if( t == -1 )        std::cout << "(";
@@ -520,13 +555,12 @@ namespace stp
             else                 std::cout << "M" << t;
           }
           std::cout << "\n";
+          std::cout << "Total time: " << to_millisecond( time ) << "ms\n";
         }
         else 
         {
-          std::cout << "use sequence\n";
-          std::cout << "total time: " << to_millisecond( time ) << "ms\n";
-          std::cout << "total cost: " << total_cost << "\n";
-          std::cout << "1000000 * (times/total_cost) = " << 1000000 * to_millisecond( time ) / total_cost << "\n";
+          std::cout << "Use sequence method for matrix chain multiply.\n";
+          std::cout << "Total time: " << to_millisecond( time ) << "ms\n";
         }
       }
 
