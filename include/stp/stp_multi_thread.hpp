@@ -37,6 +37,7 @@
 #include <mutex>
 
 #include "stp/stp_eigen.hpp"
+#include "stp/stp_timer.hpp"
 
 using matrix = Eigen::MatrixXi;           // Defines the type of matrix to use
 using matrix_chain = std::vector<matrix>; // Defined matrix chain
@@ -95,8 +96,8 @@ namespace stp
   class subchain_multiply_impl
   {
     public:
-    subchain_multiply_impl( const matrix_chain& mc, int num_threads, bool verbose )
-      :mc( mc ), num_threads( num_threads ), verbose( verbose )
+    subchain_multiply_impl( const matrix_chain& mc, int num_threads, bool use_dp, bool verbose )
+      :mc( mc ), num_threads( num_threads ), use_dp(use_dp), verbose( verbose )
     {
       max_num_threads = std::thread::hardware_concurrency();
 
@@ -125,85 +126,104 @@ namespace stp
       }
     }
 
-     matrix_chain get_sub_chain( int start, int end )
-     {
-       assert( start >=0 );
-       assert( start < mc.size() );
-       assert( end > 0 );
-       assert( end <= mc.size() );
-       
-       std::lock_guard<std::mutex> lock( mtx );
-       matrix_chain sub_chain;
+    matrix_chain get_sub_chain( int start, int end )
+    {
+      assert( start >=0 );
+      assert( start < mc.size() );
+      assert( end > 0 );
+      assert( end <= mc.size() );
+      
+      std::lock_guard<std::mutex> lock( mtx );
+      matrix_chain sub_chain;
 
-       for( int i = start; i < end; i++ )
-       {
-         sub_chain.push_back( mc[i] );
-       }
+      for( int i = start; i < end; i++ )
+      {
+        sub_chain.push_back( mc[i] );
+      }
 
-       return sub_chain;
-     }
+      return sub_chain;
+    }
 
-     matrix sub_chain_product( const matrix_chain& schain )
-     {
-       std::lock_guard<std::mutex> lock( mtx );
-       return matrix_chain_multiply( schain );
-     }
+    matrix sub_chain_product( const matrix_chain& schain )
+    {
+      std::lock_guard<std::mutex> lock( mtx );
+      return matrix_chain_multiply( schain );
+    }
     
-     matrix_chain run()
-     {
-       std::vector<std::thread> threads;
+    matrix run()
+    {
+      matrix result;
+      if(!use_dp)
+      {
+        result = call_with_stopwatch( total_time, [&]() { return run1(); } );
+      }
+      else
+      {
+        result = call_with_stopwatch( total_time, [&]() { return run2(); } );
+      }
 
-       int block_size = mc.size() / modified_num_threads;
-       int remaining_elements = mc.size() % modified_num_threads;
+      if(verbose)
+      {
+        report();
+      }
 
-       std::vector<temp_result> part( modified_num_threads );
+      return result;
+    }
 
-       if( verbose )
-       {
-         std::cout << "[i] The matrix chain size: " << mc.size() << " real #threads: " << modified_num_threads << std::endl; 
-       }
+    matrix run1()
+    {
+      std::vector<std::thread> threads;
+
+      int block_size = mc.size() / modified_num_threads;
+      int remaining_elements = mc.size() % modified_num_threads;
+
+      std::vector<temp_result> part( modified_num_threads );
+
+      if( verbose )
+      {
+        std::cout << "[i] The matrix chain size: " << mc.size() << " real #threads: " << modified_num_threads << std::endl; 
+      }
 
 
-       int start = 0;
+      int start = 0;
 
-       for( int i = 0; i < modified_num_threads; i++ )
-       {
-         int num_elements = block_size + ( i < remaining_elements ? 1 : 0 );
-         int end = start + num_elements;
+      for( int i = 0; i < modified_num_threads; i++ )
+      {
+        int num_elements = block_size + ( i < remaining_elements ? 1 : 0 );
+        int end = start + num_elements;
 
-         if( verbose )
-         {
-           std::cout << "[i] Thread " << i << " starts to process " << num_elements << " elements.\n";
-         }
-         
-         threads.emplace_back( [this, i, &part, start, end]() 
-             {
-             part[i].product = sub_chain_product( get_sub_chain( start, end ) );
-             part[i].start_index = start;
-             });
+        if( verbose )
+        {
+          std::cout << "[i] Thread " << i << " starts to process " << num_elements << " elements.\n";
+        }
+        
+        threads.emplace_back( [this, i, &part, start, end]() 
+            {
+            part[i].product = sub_chain_product( get_sub_chain( start, end ) );
+            part[i].start_index = start;
+            });
 
-         start = end;
-       }
+        start = end;
+      }
 
-       for( auto& thread : threads )
-       {
-         thread.join();
-       }
+      for( auto& thread : threads )
+      {
+        thread.join();
+      }
 
-       std::sort( part.begin(), part.end(), []( const temp_result& a, const temp_result& b ){
-            return a.start_index < b.start_index;
-           } );
+      std::sort( part.begin(), part.end(), []( const temp_result& a, const temp_result& b ){
+          return a.start_index < b.start_index;
+          } );
 
-       matrix_chain result;
+      matrix_chain result;
 
-       for( const auto& pr : part )
-       {
-         result.push_back( pr.product );
-       }
-       return result;
-     }
+      for( const auto& pr : part )
+      {
+        result.push_back( pr.product );
+      }
+      return matrix_chain_multiply( result, false, stp::mc_multiply_method::dynamic_programming);
+    }
 
-    //
     matrix run2()
     {
       std::vector<int> orders = matrix_chain_multiply_impl(mc).get_order();
@@ -211,6 +231,7 @@ namespace stp
       make_matrix_tree(orders);
 
       std::vector<std::vector<int>> levels = compute_levels();
+
       compute_root(levels);
       return mtree.get_node(mtree.root).mtx;
     }
@@ -421,32 +442,26 @@ namespace stp
       return tn.level; 
     }
 
+    void report()
+    {
+      std::cout << "total time: " << to_millisecond( total_time ) << "\n"; 
+    }
+
     private:
-      matrix undefined_matrix;
       matrix_chain mc;
       std::mutex mtx;
       matrix_tree mtree;
       int num_threads;
       int max_num_threads;
       int modified_num_threads;
+      bool use_dp;
       bool verbose;
+      stopwatch<>::duration total_time;
   };
-
-  matrix_chain subchain_multiply( const matrix_chain& mc, int num_threads, bool verbose = false )
-  {
-    subchain_multiply_impl p( mc, num_threads, verbose );
-    return p.run();
-  }
   
-  matrix matrix_chain_multiply_by_multi_thread( const matrix_chain& mc, int num_threads, bool verbose = false )
+  matrix matrix_chain_multiply_by_multi_thread( const matrix_chain& mc, int num_threads, bool use_dp = false, bool verbose = false )
   {
-    auto sub_chain = subchain_multiply( mc, num_threads, verbose );
-    return matrix_chain_multiply( sub_chain, false, stp::mc_multiply_method::dynamic_programming);
-  }
-
-  matrix matrix_chain_multiply_by_multi_thread2( const matrix_chain& mc, int num_threads, bool verbose = false )
-  {
-    subchain_multiply_impl p( mc, num_threads, verbose );
-    return p.run2();
-  }
+    subchain_multiply_impl p( mc, num_threads, use_dp, verbose );
+    return p.run();
+  } 
 } //end of namespace
