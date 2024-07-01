@@ -50,6 +50,48 @@ namespace stp
     int start_index;
   };
 
+  struct tNode
+  {
+    tNode() {}
+    tNode(bool is_matrix) : is_matrix(is_matrix) {}
+    tNode(bool is_matrix, int f1, int f2) : is_matrix(is_matrix), fanin1(f1), fanin2(f2) {}
+
+    bool is_matrix = false;
+    int level = -1;
+    int fanin1 = 0;
+    int fanin2 = 0;
+    std::pair<int, int> dimensionality;
+    uint64_t complexity;
+    matrix mtx;
+  };
+
+  struct matrix_tree
+  {
+    tNode& get_node(const int n)
+    {
+      assert(n < nodes.size());
+      return nodes[n];
+    }
+
+    int get_m(const int n)
+    {
+      return get_node(n).dimensionality.first;
+    }
+
+    int get_n(const int n)
+    {
+      return get_node(n).dimensionality.second;
+    }
+
+    uint64_t get_cost(const int n)
+    {
+      return get_node(n).complexity;
+    }
+
+    int root;
+    std::vector<tNode> nodes;
+  };
+
   class subchain_multiply_impl
   {
     public:
@@ -161,9 +203,229 @@ namespace stp
        return result;
      }
 
+    //
+    matrix run2()
+    {
+      std::vector<int> orders = matrix_chain_multiply_impl(mc).get_order();
+      assert(orders[0] == -1 && orders.back() == -2);
+      make_matrix_tree(orders);
+
+      std::vector<std::vector<int>> levels = compute_levels();
+      compute_root(levels);
+      return mtree.get_node(mtree.root).mtx;
+    }
+
+    void make_matrix_tree(const std::vector<int>& order)
+    {
+      std::vector<int> map(2 * mc.size() - 1); 
+
+      //make leaves node
+      for(int i = 0; i < mc.size(); i++)
+      {
+        mtree.nodes.emplace_back(true);
+        tNode& n = mtree.nodes.back();
+        n.level = 0;
+        n.dimensionality = std::make_pair(mc[i].rows(), mc[i].cols());
+        n.complexity = 0u;
+        n.mtx = mc[i];
+        map[i] = i;
+      }
+
+      //make nodes
+      int matrix_num = mc.size();
+      std::vector<int> v;
+
+
+      for ( int i = 0; i < order.size(); ++i )
+      {
+        if (order[i] == -1)
+        {
+        }
+        else if (order[i] == -2)
+        {
+          if(v.size() == 1) continue; 
+          assert(v.size() >= 2);
+          int f1 = v[v.size() - 2];
+          int f2 = v[v.size() - 1];
+          std::vector<uint64_t> temp = complexity_analysis(mtree.get_m(f1), mtree.get_n(f1), mtree.get_m(f2), mtree.get_n(f2));
+          mtree.nodes.emplace_back(false, f1, f2);
+          tNode& n = mtree.nodes.back();
+          n.dimensionality = std::make_pair(temp[1], temp[2]);
+          n.complexity = temp[0];
+          v.pop_back();
+          v.back() = matrix_num;
+          matrix_num++;
+        }
+        else
+        {
+          v.push_back(order[i]);
+        }
+      }
+      assert(v.size() == 1);
+      //make root
+      mtree.root = mtree.nodes.size() - 1;
+    }
+
+    std::vector<uint64_t> complexity_analysis(int m, int n, int p, int q)
+    {
+      /*
+        temp[0] operational complexity
+        temp[1] rows
+        temp[2] cols
+      */ 
+      std::vector<uint64_t> temp( 3, 0u );
+      if (n % p == 0)
+      {
+        uint64_t times  = n / p;
+        uint64_t row = m;
+        uint64_t col = times * q;
+
+        temp[0] = (2 + 1) * (m * times) * p * q;
+        temp[1] = m;
+        temp[2] = n * q / p;
+        return temp;
+      }
+      else if (p % n == 0)
+      {
+        uint64_t times  = p / n;
+        uint64_t row = m * times;
+        uint64_t col = q;
+        temp[0] = (2 + 1) * (times * q) * m * n;
+        temp[1] = m * p / n;
+        temp[2] = q;
+        return temp;
+      }
+      else
+      {
+        std::cout << "matrix type error!" << std::endl;
+      }
+      return temp;
+    }
+    
+    matrix compute_root(const std::vector<std::vector<int>>& levels)
+    {
+      assert(levels[0].size() == mc.size());
+      assert(levels.back().size() == 1);
+
+      // In order of complexity from smallest to largest.
+      for(int i = 1; i < levels.size(); i++)
+      {
+        std::vector<int> nodes = levels[i];
+        std::sort(nodes.begin(), nodes.end(), 
+          [&](int n1, int n2) 
+          { 
+            int l1 = mtree.get_node(n1).complexity;
+            int l2 = mtree.get_node(n2).complexity;
+            return l1 < l2;
+          });
+        // compute_mtxs(nodes);
+        //
+        std::vector<std::thread> threads;
+        int block_size = nodes.size() > modified_num_threads ? nodes.size() : modified_num_threads;
+        if(nodes.size() > modified_num_threads)
+        { 
+          uint64_t sum = 0u;
+          for(const int n : nodes)  sum += mtree.get_node(n).complexity;
+          uint64_t ave_complexity = sum / uint64_t(block_size);
+          std::vector<std::vector<int>> nds;
+          sum = 0u;
+          std::vector<int> ns;
+          for(const int n : nodes)
+          {
+            sum += mtree.get_node(n).complexity;
+            ns.push_back(n);
+            if(sum >= ave_complexity)
+            {
+              nds.push_back(ns);
+              ns.clear();
+              sum = 0u;
+            }
+          }
+          if(ns.size() != 0)
+          {
+            nds.push_back(ns);
+          }
+          for(const std::vector<int> ns : nds)
+          {
+            threads.emplace_back([this, ns]() {
+            compute_mtxs(ns);
+          });         
+          }
+        }
+        else
+        {
+          for(const int n : nodes)  threads.emplace_back([this, n]() {
+            compute_mtx(n);
+          });
+        }
+
+        for( auto& thread : threads )
+        {
+          thread.join();
+        }
+      }
+
+      return mtree.get_node(mtree.root).mtx;
+    }
+
+    void compute_mtxs(const std::vector<int> ns)
+    {
+      for(const int n : ns)
+      {
+        compute_mtx(n);
+      }
+    }
+
+    void compute_mtx(const int n)
+    {
+      assert(n < mtree.nodes.size());
+      tNode& tn = mtree.nodes[n];
+      int f1 = tn.fanin1;
+      int f2 = tn.fanin2;
+      matrix& m1 = mtree.get_node(f1).mtx;
+      matrix& m2 = mtree.get_node(f2).mtx;
+
+      assert(mtree.get_node(f1).is_matrix);
+      assert(mtree.get_node(f2).is_matrix);
+
+      tn.mtx = stp::semi_tensor_product(m1, m2);
+      tn.is_matrix = true;
+
+      //clean no use matrix
+      m1 = matrix();
+      m2 = matrix();
+      mtree.get_node(f1).is_matrix = false;
+      mtree.get_node(f2).is_matrix = false;
+    }
+
+    std::vector<std::vector<int>> compute_levels()
+    {
+      compute_level(mtree.root);
+      std::vector<std::vector<int>> nodes(mtree.get_node(mtree.root).level + 1);
+      // Nodes with the same level can multiply at the same time
+      for(int i = 0; i < mtree.nodes.size(); i++)
+      {
+        nodes[mtree.get_node(i).level].push_back(i);
+      }
+      return nodes;
+    }
+
+    int compute_level(const int n)
+    {
+      tNode& tn = mtree.nodes[n];
+      if(tn.level != -1) return tn.level;
+      int level1 = compute_level(tn.fanin1);
+      int level2 = compute_level(tn.fanin2);
+
+      tn.level = std::max(level1, level2) + 1;
+      return tn.level; 
+    }
+
     private:
+      matrix undefined_matrix;
       matrix_chain mc;
       std::mutex mtx;
+      matrix_tree mtree;
       int num_threads;
       int max_num_threads;
       int modified_num_threads;
@@ -182,4 +444,9 @@ namespace stp
     return matrix_chain_multiply( sub_chain, false, stp::mc_multiply_method::dynamic_programming);
   }
 
+  matrix matrix_chain_multiply_by_multi_thread2( const matrix_chain& mc, int num_threads, bool verbose = false )
+  {
+    subchain_multiply_impl p( mc, num_threads, verbose );
+    return p.run2();
+  }
 } //end of namespace
