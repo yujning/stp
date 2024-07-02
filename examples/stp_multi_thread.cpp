@@ -11,11 +11,18 @@ int main()
   std::vector<std::string> input_names{ "x_1", "x_2", "x_3", "x_4", "x_5", "x_6", "x_7", "x_8", "x_9", "x_10", "x_11", "x_12" };
   auto mc = stp::expr_normalize_to_chain( expr, input_names );
 
-  auto mat = stp::matrix_chain_multiply_by_multi_thread( mc, 1, true);
+  auto mat1 = stp::matrix_chain_multiply_by_multi_thread( mc, 2, false, true);
+  auto mat2 = stp::matrix_chain_multiply_by_multi_thread( mc, 2, true, true);
+  
+  assert(mat1 == mat2);
   std::cout << "The normal matrix for expression " << expr << " is " << std::endl;
-  std::cout << mat << std::endl;
-  std::cout << "The binary truth table is: " << stp::to_binary( mat ) << std::endl;
-  std::cout << "The hex truth table is: 0X" << stp::to_hex( mat ) << std::endl;
-
+  
+  // std::cout << mat1 << std::endl;
+  // std::cout << "The binary truth table is: " << stp::to_binary( mat1 ) << std::endl;
+  std::cout << "The hex truth table is: 0X" << stp::to_hex( mat1 ) << std::endl;
+  
+  // std::cout << mat2 << std::endl;
+  // std::cout << "The binary truth table is: " << stp::to_binary( mat2 ) << std::endl;
+  std::cout << "The hex truth table is: 0X" << stp::to_hex( mat2 ) << std::endl;
   return 0;
 }

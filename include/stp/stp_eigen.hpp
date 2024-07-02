@@ -344,7 +344,7 @@ namespace stp
   class matrix_chain_multiply_impl
   {
     public:
-      matrix_chain_multiply_impl( const matrix_chain& mc, bool verbose, const mc_multiply_method method )
+      matrix_chain_multiply_impl( const matrix_chain& mc, bool verbose = false, const mc_multiply_method method = mc_multiply_method::dynamic_programming)
       : mc( mc ), verbose( verbose ), method( method )
       {
         assert( mc.size() > 0 );
@@ -375,6 +375,11 @@ namespace stp
         }
 
         return result;
+      }
+
+      const std::vector<int> get_order()
+      {
+        return matrix_chain_order();
       }
 
     private:
