@@ -339,8 +339,7 @@ namespace stp
             int l2 = mtree.get_node(n2).complexity;
             return l1 < l2;
           });
-        // compute_mtxs(nodes);
-        //
+        
         std::vector<std::thread> threads;
         int block_size = nodes.size() > modified_num_threads ? nodes.size() : modified_num_threads;
         if(nodes.size() > modified_num_threads)
@@ -444,7 +443,16 @@ namespace stp
 
     void report()
     {
-      std::cout << "total time: " << to_millisecond( total_time ) << "\n"; 
+      if( use_dp )
+      {
+        std::cout << "[i] Threads partition based on dynamic programming\n";
+      }
+      else
+      {
+        std::cout << "[i] Simple threads partition.\n";
+      }
+
+      std::cout << "[i] Total time: " << to_millisecond( total_time ) << " ms.\n"; 
     }
 
     private:

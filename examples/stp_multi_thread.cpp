@@ -13,11 +13,14 @@ int main()
 
   auto mat1 = stp::matrix_chain_multiply_by_multi_thread( mc, 2, false, true);
   auto mat2 = stp::matrix_chain_multiply_by_multi_thread( mc, 2, true, true);
+  
   assert(mat1 == mat2);
   std::cout << "The normal matrix for expression " << expr << " is " << std::endl;
+  
   // std::cout << mat1 << std::endl;
   // std::cout << "The binary truth table is: " << stp::to_binary( mat1 ) << std::endl;
   std::cout << "The hex truth table is: 0X" << stp::to_hex( mat1 ) << std::endl;
+  
   // std::cout << mat2 << std::endl;
   // std::cout << "The binary truth table is: " << stp::to_binary( mat2 ) << std::endl;
   std::cout << "The hex truth table is: 0X" << stp::to_hex( mat2 ) << std::endl;
