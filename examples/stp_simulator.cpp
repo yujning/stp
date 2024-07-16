@@ -1,9 +1,10 @@
-#include <stp/bench_reader.hpp>
+#include <stp/bench_parser.hpp>
 #include <stp/stp_dag2nmx.hpp>
 #include <stp/stp_simulator.hpp>
+
 using namespace stp;
 
-//example test：  ./examples/dag_test ../benchmarks/c17_lut.bench
+//example test：  ./examples/stp_simulator ../benchmarks/c17_lut.bench
 int main(int argc, char **argv)
 {
 	if (argc < 2)
@@ -30,11 +31,11 @@ int main(int argc, char **argv)
 	std::cout << "***************************************" << std::endl;
 	circuit_normalize_impl cn(c, false);
 	std::string m1 = cn.run_str(false);
-	std::cout << "old methon\n";	
+	std::cout << "old method\n";	
 	std::cout << m1 << "\n";
 	
 	std::string m2 = cn.run_str(true);
-	std::cout << "new methon\n";
+	std::cout << "new method\n";
 	std::cout << m2 << "\n";
 
 	stp_simulator sim(c, true);

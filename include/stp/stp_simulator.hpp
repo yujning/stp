@@ -110,7 +110,7 @@ private:
   {
     patterns ps(num_vars, 0u);
 
-    //变量数量必须小于32，通常来说16变量电路全仿真已经相对困难了
+    //the number of variables should be fewer than 32
     uint32_t num = 1 << num_vars;
     for(uint32_t i = (num-1); i != 0u; i--)
     {
@@ -191,7 +191,8 @@ private:
         }
         temp_nodes.pop_front();
         count--;
-        //对应该两种情况 (是棵大树，将其化为小树 || 本就是一颗小树)
+        //two cases: is a big tree, part it into smaller one || already a
+        //small tree
         if(count > limit || temp_nodes.empty())  
         {
           break;
@@ -217,10 +218,10 @@ private:
 
   void compute(const id n)
   {
-    //获取矩阵
+    //get the matrix
     std::unordered_map<id, int> var_map;
     const matrix mtx = get_matrix(var_map, n);
-    //解析变量顺序
+    //parse the variables order
     std::vector<id> vars(var_map.size());
     int var_num = vars.size();
     for(const auto& t : var_map)
@@ -256,10 +257,10 @@ private:
       for(const auto& input : circuit.get_node(n).get_inputs())
       {
         const id fi = input.index;
-        //变量
+        //var
         if(flag[fi] = true)
         {
-          //变量有没有被收集过
+          //vars have not been collected
           if(var_map.find(fi) == var_map.end())
           {
             temp = var_map.size() + 1;
@@ -281,7 +282,7 @@ private:
       }
     }
 
-    //解析变量顺序 得到规范型
+    //canonical
     matrix m = stp::normalize_matrix(mc);
     return m;
   }
@@ -340,9 +341,9 @@ private:
   std::unordered_map<id, patterns> sim_info;
 
   //supplementary information
-  std::vector<id> nodes;                  // level从低到高排序
-  std::vector<id> need_sim_nodes;         // 记录需要仿真的节点
-  std::unordered_map<id, bool> flag;      // true: 该节点需要仿真或者是pi
+  std::vector<id> nodes;                  // ordered by levels in descending 
+  std::vector<id> need_sim_nodes;         // record the necessary simulation nodes
+  std::unordered_map<id, bool> flag;      // the flag to indicate the node need be simulated or it is a PI
 };
 
 }

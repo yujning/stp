@@ -124,13 +124,27 @@ namespace stp
       std::string run_str(bool new_ = false)
       {
         matrix m;
-        if(new_)   m = new_run();
-        else       m = run();
+
+        if(new_)   
+        {
+          m = new_run();
+        }
+        else
+        {
+          m = run();
+        }
+
         std::string str = "";
         for(int i = 0; i < m.cols(); i++)
         {
-          if(m(0, i) == 0) str += '0';
-          else             str += '1';
+          if(m(0, i) == 0) 
+          {
+            str += '0';
+          }
+          else
+          {
+            str += '1';
+          }
         }
         return str;
       }
@@ -436,7 +450,7 @@ namespace stp
       stp_expr mc;
 
       uint32_t other = 0u;
-      std::unordered_map<uint32_t, std::string> other_matrix; //储存运算过程中出现的中间W(m,n) In Mr 
+      std::unordered_map<uint32_t, std::string> other_matrix; // record the intermediate results W(m,n) In Mr 
 
       uint32_t num_vars = 0u;
       std::unordered_map<uint32_t, uint32_t> vars_order;

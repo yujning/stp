@@ -25,7 +25,7 @@
 
 /*!
   \file stp_circuit.hpp
-  \brief header file for some basic STP operations
+  \brief header file for some basic STP operations, the code is inspired from mockturtle
   \author Zhufei Chu
   \author Ruibing Zhang
 */
