@@ -4,12 +4,12 @@ Introduction
 Semi-Tensor Product (STP) engine for Electronic Design Automation (EDA)
 
 Compilation requirements
----------------------------------
+-------------------------------
 Support of C++ 17 standard is required to compile stp. Now it works using GCC 8.
 More comiplers are going to be tested.
 
 Using stp as a stand-alone tool
----------------------------------------
+-------------------------------
 
 We use ``eigen`` library for matrix computation, so please install it
 before running this project::
