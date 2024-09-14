@@ -65,23 +65,23 @@ TEST_CASE( "power reducing matrix", "[eigen]" )
   CHECK( stp1 == stp2 );
 }
 
-/*
-TEST_CASE( "expression to tt", "[eigen]" )
+TEST_CASE( "STP calculation by two methods", "[eigen]" )
 {
-  std::string expr1 = "(a & b) | (a & ~c) | (~b & ~c)";
+  //n % p = 0 type 
+  int m = 200;
+  int n1 = 4 << 5;
+  int p1 = 4;
+  int q = 100;
+  matrix A1 = stp::matrix_random_generation( m, n1 );
+  matrix B1 = stp::matrix_random_generation( p1, q );
+  CHECK( stp::semi_tensor_product( A1, B1, false, stp::stp_method::copy_method   ) ==
+      stp::semi_tensor_product( A1, B1, false, stp::stp_method::native_method ) ); 
   
-  std::vector<std::string> inputs_order1 = { "a", "b", "c" };
-  MatrixXi mat1 = stp::from_exp_to_nmx( expr1, inputs_order1 );
-  CHECK( stp::to_binary( mat1 ) == "10001011" );
-  CHECK( stp::to_hex( mat1 ) == "8B" );
-  
-  std::vector<std::string> inputs_order2 = { "a", "c", "b" };
-  MatrixXi mat2 = stp::from_exp_to_nmx( expr1, inputs_order2 );
-  CHECK( stp::to_binary( mat2 ) == "10001101" );
-  CHECK( stp::to_hex( mat2 ) == "8D" );
-  
-  std::vector<std::string> inputs_order3 = { "c", "b", "a" };
-  MatrixXi mat3 = stp::from_exp_to_nmx( expr1, inputs_order3 );
-  CHECK( stp::to_binary( mat3 ) == "11010001" );
-  CHECK( stp::to_hex( mat3 ) == "D1" );
-}*/
+  //p % n = 0 type 
+  int n2 = 4;
+  int p2 = 4 << 5;
+  matrix A2 = stp::matrix_random_generation( m, n2 );
+  matrix B2 = stp::matrix_random_generation( p2, q );
+  CHECK( stp::semi_tensor_product( A2, B2, false, stp::stp_method::copy_method   ) ==
+      stp::semi_tensor_product( A2, B2, false, stp::stp_method::native_method ) ); 
+}

@@ -49,6 +49,19 @@ using matrix_chain = std::vector<matrix>; // Defined matrix chain
 namespace stp
 {
 
+  inline matrix matrix_random_generation( int row, int col )
+  {
+    matrix result( row, col );
+    for( int i = 0; i < row; i++ )
+    {
+      for( int j = 0; j < col; j++ )
+      {
+        result( i, j ) = rand() % 2;
+      }
+    }
+    return result;
+  }
+
   inline matrix generate_swap_matrix( const int& m, const int& n )
   {
     matrix swap_matrixXi = matrix::Zero( m * n, m * n );
@@ -124,18 +137,16 @@ namespace stp
     }
   }
   
-
   enum class stp_method : uint8_t
   {
-    self_adaptation = 0,
-    definition_1 = 1,
-    definition_2 = 2,
+    copy_method   = 1,
+    native_method = 2,
   };
 
   class semi_tensor_product_impl
   {
     public:
-      semi_tensor_product_impl( const matrix& A, const matrix& B, bool verbose, const stp_method method)
+      semi_tensor_product_impl( const matrix& A, const matrix& B, bool verbose, const stp_method method )
        : A( A ), B( B ), verbose( verbose ), method( method )
       {
         m = A.rows();
@@ -147,32 +158,14 @@ namespace stp
       matrix run()
       {
         matrix result;
-        uint64_t complexity_1 = cost1();
-        uint64_t complexity_2 = cost2();
 
-        switch (method)
+        if( method == stp_method::native_method )
         {
-          case stp_method::definition_1:
-            result = call_with_stopwatch( time, [&]() { return semi_tensor_product1(); } );
-            break;
-
-          case stp_method::definition_2:
-            result = call_with_stopwatch( time, [&]() { return semi_tensor_product2(); } );
-            break;
-
-          case stp_method::self_adaptation:
-            if(complexity_1 < complexity_2)
-            {
-              result = call_with_stopwatch( time, [&]() { return semi_tensor_product1(); } );
-            }
-            else
-            {
-              result = call_with_stopwatch( time, [&]() { return semi_tensor_product2(); } );
-            }
-            break;
-
-          default:
-            break;
+          result = call_with_stopwatch( time, [&]() { return semi_tensor_product_native(); } );
+        }
+        else
+        {
+          result = call_with_stopwatch( time, [&]() { return semi_tensor_product_copy(); } );
         }
 
         if(verbose)
@@ -189,45 +182,8 @@ namespace stp
         return ( m * n ) / std::gcd( m, n );
       }
 
-      uint64_t cost1()
+      matrix semi_tensor_product_native()
       {
-        uint64_t t = get_lcm( n, p );
-        uint64_t kp = 2 * ( ( m * t / n ) * t + t * ( t * q / p ) );
-        uint64_t total = kp + ( ( 2 + 1 ) * t ) * ( ( m * t / n) * ( t * q / p) );
-        return total;
-      }
-
-      uint64_t cost2()
-      {
-        uint64_t total;
-        if( n % p == 0 )
-        {
-          uint64_t times  = n / p;
-          uint64_t row = m;
-          uint64_t col = times * q;
-
-          total = ( 2 + 1 ) * ( m * times ) * p * q;
-        }
-        else if( p % n == 0 )
-        {
-          uint64_t times  = p / n;
-          uint64_t row = m * times;
-          uint64_t col = q;
-
-          total = ( 2 + 1 ) * ( times * q ) * m * n;
-        }
-        else
-        {
-          std::cout << "matrix type error!" << std::endl;
-          assert(false);
-        }
-        return total;
-      }
-
-      matrix semi_tensor_product1()
-      {
-        cost = cost1();
-
         unsigned t = get_lcm( n, p );
 
         matrix Ia = matrix::Identity( t / n, t / n );
@@ -239,7 +195,8 @@ namespace stp
         return KPa * KPb;
       }
 
-      matrix semi_tensor_product2()
+      //copy method as default
+      matrix semi_tensor_product_copy()
       {
         int row, col;
         matrix result_matrix;
@@ -279,39 +236,27 @@ namespace stp
           assert(false);
         }
 
-        cost = cost2();
         return result_matrix;
       }
 
       void report(const matrix& result)
       {
-        std::cout << "----------------------------------------------------------\n";
+        std::cout << "--------------------STP Computation----------------------\n";
         std::cout << "Dimension A: " << m << " x " << n << "\n";
         std::cout << "Dimension B: " << p << " x " << q << "\n";
         
-        if( method == stp_method::definition_1 )  
+        if( method == stp_method::native_method )  
         {
-          std::cout << "Use the definition 1!\n";
-        }
-        else if( method == stp_method::definition_2 )  
-        {
-          std::cout << "Use the definition 2!\n";
+          std::cout << "Use the native method to compute STP.\n";
         }
         else 
         {
-          if( cost1() < cost2() )
-          {
-            std::cout << "Use the definition 1!\n";
-          }
-          else
-          {
-            std::cout << "Use the definition 2!\n";
-          }
+          std::cout << "Use the copy method to compute STP.\n";
         }
 
-        std::cout << "Dimensions: " << result.rows() << " x " << result.cols() << "\n";
+        std::cout << "Result Dimensions: " << result.rows() << " x " << result.cols() << "\n";
         std::cout << "Total time: " << to_millisecond( time ) << "ms\n";
-        std::cout << "----------------------------------------------------------\n";
+        std::cout << "---------------------------------------------------------\n";
       }
 
     private:
@@ -321,7 +266,6 @@ namespace stp
       const stp_method method;
       uint32_t m{0u}, n{0u}, p{0u}, q{0u};
       stopwatch<>::duration time{0};
-      uint64_t cost{0u};
   };
 
   /*! \brief Compute the semi-tensor product of matrix A and matrix B.
@@ -329,7 +273,7 @@ namespace stp
       matrix A, B;
       matrix result = semi_tensor_product(A, B);
   */
-  inline matrix semi_tensor_product( const matrix& A, const matrix& B, const bool verbose = false, const stp_method method = stp_method::self_adaptation)
+  inline matrix semi_tensor_product( const matrix& A, const matrix& B, const bool verbose = false, const stp_method method = stp_method::copy_method )
   {
     semi_tensor_product_impl stp_impl( A, B, verbose, method);
     return stp_impl.run();
