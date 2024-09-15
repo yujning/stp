@@ -13,21 +13,12 @@ void print(const matrix_chain& mc)
   }
 }
 
-matrix random_generation(int row, int col)
-{
-  matrix result(row, col);
-  for(int i = 0; i < row; i++)
-    for(int j = 0; j < col; j++)
-      result(i, j) = rand() % 2;
-  return result;
-}
-
 void test1()
 {
   matrix_chain mc;
   for(int i = 0; i < 22; i++)
   {
-    mc.push_back(random_generation(2, 4));
+    mc.push_back(stp::matrix_random_generation(2, 4));
   }
   // print(mc);
   matrix r1 = stp::matrix_chain_multiply(mc, true);
@@ -40,7 +31,7 @@ void test2()
   matrix_chain mc;
   for(int i = 0; i < 22; i++)
   {
-    mc.push_back(random_generation(4, 2));
+    mc.push_back(stp::matrix_random_generation(4, 2));
   }
   // print(mc);
   matrix r1 = stp::matrix_chain_multiply(mc, true);
@@ -53,8 +44,8 @@ void test3()
   matrix_chain mc;
   for(int i = 0; i < 100; i++)
   {
-    if(rand() % 2 == 1) mc.push_back(random_generation(4, 2));
-    else                mc.push_back(random_generation(2, 4));
+    if(rand() % 2 == 1) mc.push_back(stp::matrix_random_generation(4, 2));
+    else                mc.push_back(stp::matrix_random_generation(2, 4));
   }
   // print(mc);
   matrix r1 = stp::matrix_chain_multiply(mc, true);

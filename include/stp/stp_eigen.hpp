@@ -315,7 +315,7 @@ namespace stp
 
         if(verbose)
         {
-          print();
+          report();
         }
 
         return result;
@@ -492,11 +492,13 @@ namespace stp
         return stacks[0];
       }
 
-      void print()
+      void report()
       {
+        std::cout << "------------------Matrix Chain STP Computation-----------------\n";
         if( method == mc_multiply_method::dynamic_programming )
         {
           std::cout << "Use dynamic programming method for matrix chain multiply.\n";
+          std::cout << "The parenthesis are added as shown in the following.\n";
           for( int t : orders )
           {
             if( t == -1 )        std::cout << "(";
@@ -511,6 +513,7 @@ namespace stp
           std::cout << "Use sequence method for matrix chain multiply.\n";
           std::cout << "Total time: " << to_millisecond( time ) << "ms\n";
         }
+        std::cout << "-------------------------------------------------------------\n";
       }
 
     private:  

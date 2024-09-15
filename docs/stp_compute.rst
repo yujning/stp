@@ -1,10 +1,13 @@
 STP Computation
 ===============
 
-Semi-Tensor Product (STP) Computation based on Eigen Library 
+The basic Semi-Tensor Product (STP) Computation based on Eigen Library 
+
+Basic STP Computation
+----------------------
 
 Native Definition
------------------
+^^^^^^^^^^^^^^^^^^^^^
 
 Given two matrices :math:`A_{m \times n}` and :math:`B_{p \times q}`, the STP
 of :math:`A` and :math:`B` is defined as 
@@ -58,7 +61,7 @@ According to the definition,
   \end{align}
 
 Copy Definition
------------------
+^^^^^^^^^^^^^^^^^^^^^
 Continue with the above example, we can view :math:`A` be composed by two
 submatrices :math:`A_{left}=\begin{bmatrix}1 & 0 \\ 0 & 1\end{bmatrix}` 
 and :math:`A_{right} = \begin{bmatrix}0 & 0 \\ 1 & 1\end{bmatrix}`. When we
@@ -69,7 +72,7 @@ partial result; otherwise, we copy :math:`A_{right}`. One can verify the
 results are exactly the same as the ones computed by native definition.
 
 Functions
-----------------
+^^^^^^^^^^^^^^^^^^^^^
 In header file ``stp/stp_eigen.hpp``, we provide function::
 
   matrix semi_tensor_product( const matrix& A, const matrix& B 
@@ -96,3 +99,59 @@ Example
   auto result = stp::semi_tensor_product( A, B, true, stp::stp_method::native_method );
 
 One can find more examples or test cases in ``examples/stp_eigen.cpp`` and ``test/stp_eigen.cpp``.
+
+Matrix Chain STP Computation
+----------------------------
+When we have :math:`n` matrices multiplication and :math:`n \ge 3`, we call
+this as matrix chain STP computation. 
+
+Sequence
+^^^^^^^^^^^^^^^^^^^^^
+The matrix are multiplied one by one in sequence. For example, we have 4
+matrices :math:`A`, :math:`B`, :math:`C`, and :math:`D`. The parenthesis of
+the matrix chain is 
+
+.. math::
+  ABCD = (((AB)C)D).
+
+Dynamic Programming
+^^^^^^^^^^^^^^^^^^^^^
+As the computation complexity is distinct if we use different parenthesis
+method, we also propose a dynamic programming method for matrix chain STP
+computation. We may have an optimal parenthesis for the matrix chain as
+
+.. math::
+  ABCD = ((AB)(CD)).
+
+Multi-threads
+^^^^^^^^^^^^^^^^^^^^^
+Once we obtained the computation orders based on dynamic programming, the
+computation can also invoke multi-threads to accerlerate.
+
+Functions
+^^^^^^^^^^^^^^^^^^^^^
+In header file ``stp/stp_eigen.hpp``, we provide function::
+
+  matrix matrix_chain_multiply( const matrix_chain& mc, 
+                                const bool verbose = false,
+                                const mc_multiply_method method = mc_multiply_method::dynamic_programming )
+
+to compute the STP of matrix chain :math:`mc`, where toggle ``verbose`` is off and toggle ``mc_multiply_method``
+is used by the dynamic programming by default.
+
+Example
+
+.. code-block:: c++
+  
+  matrix_chain mc;
+  
+  //default
+  auto result = stp::matrix_chain_multiply( mc );
+
+  //print verbose information
+  auto result = stp::matrix_chain_multiply( mc, true );
+  
+  //use sequence method for matrix chain STP computation
+  auto result = stp::matrix_chain_multiply( mc, false, mc_multiply_method::sequence );
+
+One can find more test cases in ``test/stp_eigen.cpp``.

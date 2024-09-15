@@ -82,6 +82,47 @@ TEST_CASE( "STP calculation by two methods", "[eigen]" )
   int p2 = 4 << 5;
   matrix A2 = stp::matrix_random_generation( m, n2 );
   matrix B2 = stp::matrix_random_generation( p2, q );
-  CHECK( stp::semi_tensor_product( A2, B2, false, stp::stp_method::copy_method   ) ==
-      stp::semi_tensor_product( A2, B2, false, stp::stp_method::native_method ) ); 
+  
+  matrix r1 = stp::semi_tensor_product( A2, B2, false, stp::stp_method::copy_method   ); 
+  matrix r2 = stp::semi_tensor_product( A2, B2, false, stp::stp_method::native_method ); 
+  CHECK( r1 == r2 );
+}
+
+TEST_CASE( "Matrix chain STP calculation by two methods", "[eigen]" )
+{
+  matrix_chain mc1, mc2, mc3;
+  
+  for( int i = 0; i < 100; i++ )
+  {
+    if( rand() % 2 == 1 ) 
+    {
+      mc1.push_back( matrix_random_generation( 4, 2 ) );
+    }
+    else
+    {
+      mc1.push_back( matrix_random_generation( 2, 4 ) );
+    }
+  }
+
+  matrix r1 = stp::matrix_chain_multiply( mc1, false, stp::mc_multiply_method::dynamic_programming );
+  matrix r2 = stp::matrix_chain_multiply( mc1, false, stp::mc_multiply_method::sequence );
+  CHECK( r1 == r2 );
+  
+  for( int i = 0; i < 22; i++ )
+  {
+    mc2.push_back( stp::matrix_random_generation( 2, 4 ) );
+  }
+
+  matrix r3 = stp::matrix_chain_multiply( mc2, false, stp::mc_multiply_method::dynamic_programming );
+  matrix r4 = stp::matrix_chain_multiply( mc2, false, stp::mc_multiply_method::sequence );
+  CHECK( r3 == r4 );
+  
+  for( int i = 0; i < 22; i++ )
+  {
+    mc3.push_back( stp::matrix_random_generation( 4, 2 ) );
+  }
+
+  matrix r5 = stp::matrix_chain_multiply( mc3, false, stp::mc_multiply_method::dynamic_programming );
+  matrix r6 = stp::matrix_chain_multiply( mc3, false, stp::mc_multiply_method::sequence );
+  CHECK( r5 == r6 );
 }
