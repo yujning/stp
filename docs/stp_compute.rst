@@ -107,18 +107,19 @@ this as matrix chain STP computation.
 
 Sequence
 ^^^^^^^^^^^^^^^^^^^^^
-The matrix are multiplied one by one in sequence. For example, we have 4
-matrices :math:`A`, :math:`B`, :math:`C`, and :math:`D`. The parenthesis of
-the matrix chain is 
+The matrix chain STP is calculated by sequential order. For example, we have 4
+matrices :math:`A`, :math:`B`, :math:`C`, and :math:`D`. The parenthesized
+expression of the matrix chain multiplication is as follows: 
 
 .. math::
   ABCD = (((AB)C)D).
 
 Dynamic Programming
 ^^^^^^^^^^^^^^^^^^^^^
-As the computation complexity is distinct if we use different parenthesis
-method, we also propose a dynamic programming method for matrix chain STP
-computation. We may have an optimal parenthesis for the matrix chain as
+Since the computational complexity varies depending on the method of
+parenthesizing, we also propose a dynamic programming approach for matrix
+chain STP computation. This approach allows us to determine the optimal
+parenthesization of the matrix chain.
 
 .. math::
   ABCD = ((AB)(CD)).
