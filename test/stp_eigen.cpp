@@ -65,23 +65,64 @@ TEST_CASE( "power reducing matrix", "[eigen]" )
   CHECK( stp1 == stp2 );
 }
 
-/*
-TEST_CASE( "expression to tt", "[eigen]" )
+TEST_CASE( "STP calculation by two methods", "[eigen]" )
 {
-  std::string expr1 = "(a & b) | (a & ~c) | (~b & ~c)";
+  //n % p = 0 type 
+  int m = 200;
+  int n1 = 4 << 5;
+  int p1 = 4;
+  int q = 100;
+  matrix A1 = stp::matrix_random_generation( m, n1 );
+  matrix B1 = stp::matrix_random_generation( p1, q );
+  CHECK( stp::semi_tensor_product( A1, B1, false, stp::stp_method::copy_method   ) ==
+      stp::semi_tensor_product( A1, B1, false, stp::stp_method::native_method ) ); 
   
-  std::vector<std::string> inputs_order1 = { "a", "b", "c" };
-  MatrixXi mat1 = stp::from_exp_to_nmx( expr1, inputs_order1 );
-  CHECK( stp::to_binary( mat1 ) == "10001011" );
-  CHECK( stp::to_hex( mat1 ) == "8B" );
+  //p % n = 0 type 
+  int n2 = 4;
+  int p2 = 4 << 5;
+  matrix A2 = stp::matrix_random_generation( m, n2 );
+  matrix B2 = stp::matrix_random_generation( p2, q );
   
-  std::vector<std::string> inputs_order2 = { "a", "c", "b" };
-  MatrixXi mat2 = stp::from_exp_to_nmx( expr1, inputs_order2 );
-  CHECK( stp::to_binary( mat2 ) == "10001101" );
-  CHECK( stp::to_hex( mat2 ) == "8D" );
+  matrix r1 = stp::semi_tensor_product( A2, B2, false, stp::stp_method::copy_method   ); 
+  matrix r2 = stp::semi_tensor_product( A2, B2, false, stp::stp_method::native_method ); 
+  CHECK( r1 == r2 );
+}
+
+TEST_CASE( "Matrix chain STP calculation by two methods", "[eigen]" )
+{
+  matrix_chain mc1, mc2, mc3;
   
-  std::vector<std::string> inputs_order3 = { "c", "b", "a" };
-  MatrixXi mat3 = stp::from_exp_to_nmx( expr1, inputs_order3 );
-  CHECK( stp::to_binary( mat3 ) == "11010001" );
-  CHECK( stp::to_hex( mat3 ) == "D1" );
-}*/
+  for( int i = 0; i < 100; i++ )
+  {
+    if( rand() % 2 == 1 ) 
+    {
+      mc1.push_back( matrix_random_generation( 4, 2 ) );
+    }
+    else
+    {
+      mc1.push_back( matrix_random_generation( 2, 4 ) );
+    }
+  }
+
+  matrix r1 = stp::matrix_chain_multiply( mc1, false, stp::mc_multiply_method::dynamic_programming );
+  matrix r2 = stp::matrix_chain_multiply( mc1, false, stp::mc_multiply_method::sequence );
+  CHECK( r1 == r2 );
+  
+  for( int i = 0; i < 22; i++ )
+  {
+    mc2.push_back( stp::matrix_random_generation( 2, 4 ) );
+  }
+
+  matrix r3 = stp::matrix_chain_multiply( mc2, false, stp::mc_multiply_method::dynamic_programming );
+  matrix r4 = stp::matrix_chain_multiply( mc2, false, stp::mc_multiply_method::sequence );
+  CHECK( r3 == r4 );
+  
+  for( int i = 0; i < 22; i++ )
+  {
+    mc3.push_back( stp::matrix_random_generation( 4, 2 ) );
+  }
+
+  matrix r5 = stp::matrix_chain_multiply( mc3, false, stp::mc_multiply_method::dynamic_programming );
+  matrix r6 = stp::matrix_chain_multiply( mc3, false, stp::mc_multiply_method::sequence );
+  CHECK( r5 == r6 );
+}

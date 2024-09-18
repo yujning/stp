@@ -27,6 +27,7 @@
   \file stp_multi_thread.hpp
   \brief header file for stp multi thread calculation
   \author Zhufei Chu
+  \author Ruibing Zhang
 */
 
 #pragma once

@@ -11,7 +11,7 @@ int main()
   std::vector<std::string> input_names{ "x_1", "x_2", "x_3", "x_4", "x_5", "x_6", "x_7", "x_8", "x_9", "x_10", "x_11", "x_12" };
   auto mc = stp::expr_normalize_to_chain( expr, input_names );
 
-  auto mat1 = stp::matrix_chain_multiply_by_multi_thread( mc, 2, false, true);
+  auto mat1 = stp::matrix_chain_multiply_by_multi_thread( mc, 1, false, true);
   auto mat2 = stp::matrix_chain_multiply_by_multi_thread( mc, 2, true, true);
   
   assert(mat1 == mat2);
