@@ -32,7 +32,7 @@
 #pragma once
 
 #include <Eigen/Dense>
-#include <cmath>
+#include <algorithm>
 
 #include "stp/stp_eigen.hpp"
 #include "stp/stp_utils.hpp"
@@ -65,6 +65,12 @@ class stp_normalize_impl
     vars_order.clear();
     chain.clear();
 
+    I2 = matrix::Zero( 2, 2 );
+    I2 << 1, 0, 0, 1;
+
+    PR2 = matrix::Zero( 4, 2 );
+    PR2 << 1, 0, 0, 0, 0, 0, 0, 1;
+
     unsigned num_vars = 0u;
     for ( const id& pi : circuit.get_inputs() )
       {
@@ -85,14 +91,150 @@ class stp_normalize_impl
     print_chain_ids();
     print_expr();
     get_chain();
-    print_chain( chain );
+    // print_chain( chain );
+
+    auto new_chain = chain_normalize_method1();
+    // print_chain( new_chain );
+
+    std::cout << "The final results: \n"
+              << matrix_chain_multiply( legal_chain( new_chain ) ) << "\n";
   }
+
+  matrix_chain chain_normalize_method1()
+  {
+    matrix_chain input_chain = chain;
+
+    while ( !is_normal_chain( input_chain ) )
+      {
+        auto output_chain = reorder( input_chain );
+        input_chain = output_chain;
+      }
+
+    return input_chain;
+  }
+
+  matrix_chain legal_chain( const matrix_chain& mc )
+  {
+    matrix_chain order;
+
+    for ( const auto& m : mc )
+      {
+        if ( !is_variable( m ) )
+          {
+            order.push_back( m );
+          }
+      }
+
+    return order;
+  }
+
+  bool is_normal_chain( const matrix_chain& mc )
+  {
+    for ( unsigned i = 0; i < mc.size() - 1u; i++ )
+      {
+        if ( is_variable( mc[ i ] ) && is_matrix( mc[ i + 1 ] ) )
+          {
+            return false;
+          }
+        else if ( is_variable( mc[ i ] ) && is_variable( mc[ i + 1 ] ) )
+          {
+            auto a = get_variable( mc[ i ] );
+            auto b = get_variable( mc[ i + 1 ] );
+
+            if ( a >= b )
+              {
+                return false;
+              }
+          }
+      }
+
+    return true;
+  }
+
+  matrix_chain reorder( const matrix_chain& mc )
+  {
+    matrix_chain order = mc;
+
+    std::vector<unsigned> insert_idx;
+
+    for ( unsigned i = 0; i < mc.size() - 1u; i++ )
+      {
+        // swap variable and matrix
+        if ( is_variable( mc[ i ] ) && is_matrix( mc[ i + 1 ] ) )
+          {
+            std::cout << "swap " << i << " and " << i + 1 << "\n";
+            // swap
+            matrix temp = kronecker_product( I2, order[ i + 1 ] );
+            order[ i + 1 ] = order[ i ];
+            order[ i ] = temp;
+          }
+        // variables power reducing or swapping
+        else if ( is_variable( mc[ i ] ) && is_variable( mc[ i + 1 ] ) )
+          {
+            auto a = get_variable( mc[ i ] );
+            auto b = get_variable( mc[ i + 1 ] );
+
+            if ( a == b )
+              {
+                std::cout << "PR2"
+                          << "\n";
+                order[ i ] = PR2;
+              }
+            else
+              {
+                // order the variables
+                if ( a > b )
+                  {
+                    std::cout << "reoder " << i << " and " << i + 1 << "\n";
+                    matrix temp = order[ i + 1 ];
+                    order[ i + 1 ] = order[ i ];
+                    order[ i ] = temp;
+
+                    insert_idx.push_back( i );
+
+                    // order.insert( order.begin() + i + count,
+                    // generate_swap_matrix( 2, 2 ) );
+                  }
+              }
+          }
+        else
+          {
+            continue;
+          }
+      }
+
+    // insert the swap matrix in reverse order
+    sort( insert_idx.rbegin(), insert_idx.rend() );
+    matrix swap_matrix2 = generate_swap_matrix( 2, 2 );
+    for ( const auto& j : insert_idx )
+      {
+        order.insert( order.begin() + j, swap_matrix2 );
+      }
+
+    // std::cout <<
+    // "----------------------------------------------------------------------\n";
+    // print_chain( order );
+
+    return order;
+  }
+
+  bool is_variable( const matrix& m ) { return m.rows() == 2 && m.cols() == 1; }
+
+  int get_variable( const matrix& m )
+  {
+    assert( is_variable( m ) );
+
+    return m( 0, 0 );
+  }
+
+  // check whether it is a matrix
+  bool is_matrix( const matrix& m ) { return m.cols() > 1; }
 
   void print_chain( const matrix_chain& mc )
   {
     for ( const auto& m : mc )
       {
-        std::cout << m << std::endl;
+        std::cout << m << "\n" << std::endl;
       }
   }
 
@@ -187,6 +329,8 @@ class stp_normalize_impl
   ids nodes;
   std::unordered_map<uint32_t, uint32_t>
       vars_order;  // record the variables order
+  matrix I2;
+  matrix PR2;
 };
 
 void stp_normalize( const stp_circuit& circuit, bool verbose = false )
