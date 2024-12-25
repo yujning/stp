@@ -121,17 +121,14 @@ inline matrix kronecker_product( const matrix& A, const matrix& B )
       return A;
     }
 
-  if ( is_identity_matrix( A ) )
-    {
-      Eigen::SparseMatrix<int> sparse_A = A.sparseView();
-      Eigen::SparseMatrix<int> KP = Eigen::kroneckerProduct( sparse_A, B );
-      matrix result( KP );
-      return KP;
-    }
-  else
-    {
-      return Eigen::kroneckerProduct( A, B );
-    }
+  Eigen::SparseMatrix<int> sparse_A = A.sparseView();
+  Eigen::SparseMatrix<int> sparse_B = B.sparseView();
+
+  Eigen::SparseMatrix<int> KP = Eigen::kroneckerProduct( sparse_A, sparse_B );
+
+  matrix result( KP );
+
+  return result;
 }
 
 enum class stp_method : uint8_t
@@ -192,7 +189,14 @@ class semi_tensor_product_impl
     matrix KPa = kronecker_product( A, Ia );
     matrix KPb = kronecker_product( B, Ib );
 
-    return KPa * KPb;
+    //return KPa * KPb;
+    Eigen::SparseMatrix<int> sparse_KPa = KPa.sparseView();
+    Eigen::SparseMatrix<int> sparse_KPb = KPb.sparseView();
+
+    Eigen::SparseMatrix<int> KP = sparse_KPa * sparse_KPb;
+    matrix result( KP );
+
+    return result;
   }
 
   // copy method as default
