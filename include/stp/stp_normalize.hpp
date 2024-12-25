@@ -39,15 +39,161 @@
 
 using matrix = Eigen::MatrixXi;            // Defines the type of matrix to use
 using matrix_chain = std::vector<matrix>;  // Defined matrix chain
-using ids = std::vector<uint32_t>;
+using node_ids = std::vector<uint32_t>;
 
 namespace stp
 {
 /*
- * Given a input matrix chain expressed in vector, the class is used to
- * normalize it by multiple methods.
+ * Public class
+ * */
+class circuit_common_impl
+{
+ public:
+  circuit_common_impl( const stp_circuit& circuit ) : circuit( circuit )
+  {
+    vars_order.clear();
+    for ( const id& pi : circuit.get_inputs() )
+      {
+        num_vars++;
+        vars_order[ pi ] = circuit.get_inputs().size() - num_vars + 1;
+      }
+  }
+
+ public:
+  node_ids get_circuit_ids()
+  {
+    node_ids topo;
+
+    assert( circuit.get_outputs().size() == 1 );
+    const id po = circuit.get_outputs()[ 0 ];
+
+    get_chain_id( po, topo );
+
+    return topo;
+  }
+
+  matrix_chain get_circuit_chain()
+  {
+    matrix_chain chain;
+    auto nodes = get_circuit_ids();
+
+    for ( const id& n : nodes )
+      {
+        chain.push_back( get_matrix( n ) );
+      }
+    return chain;
+  }
+
+  std::unordered_map<std::string, matrix> get_str_matrix_map()
+  {
+    std::unordered_map<std::string, matrix> str2mtx;
+    auto nodes = get_circuit_ids();
+
+    for ( const id& n : nodes )
+      {
+        if ( circuit.is_pi( n ) )
+          {
+            str2mtx[ circuit.get_node( n ).get_name() ] = get_matrix( n );
+          }
+        else
+          {
+            str2mtx[ "m" + std::to_string( n ) ] = get_matrix( n );
+          }
+      }
+
+    return str2mtx;
+  }
+
+  std::vector<std::string> get_circuit_expr()
+  {
+    std::vector<std::string> expr;
+    auto nodes = get_circuit_ids();
+
+    for ( const auto& t : nodes )
+      {
+        if ( circuit.is_pi( t ) )
+          {
+            expr.push_back( circuit.get_node( t ).get_name() );
+          }
+        else
+          {
+            assert( t < circuit.get_nodes().size() );
+            expr.push_back( "m" + std::to_string( t ) );
+          }
+      }
+
+    return expr;
+  }
+
+ private:
+  // get the chain expressed using node ids
+  void get_chain_id( const id& n, node_ids& nodes )
+  {
+    nodes.push_back( n );
+
+    if ( !circuit.is_pi( n ) )
+      {
+        for ( const auto& input : circuit.get_node( n ).get_inputs() )
+          {
+            get_chain_id( input.index, nodes );
+          }
+      }
+    else
+      {
+        return;
+      }
+  }
+
+  matrix get_matrix( const uint32_t n )
+  {
+    if ( circuit.is_pi( n ) )
+      {
+        uint32_t order = vars_order[ n ];
+        matrix result( 2, 1 );
+        result << order, order;
+        return result;
+      }
+
+    return circuit.get_node( n ).get_mtx();
+  }
+
+ private:
+  const stp_circuit& circuit;
+  bool verbose;
+  std::unordered_map<uint32_t, uint32_t> vars_order;
+  unsigned num_vars = 0u;
+};
+
+node_ids get_circuit_ids( const stp_circuit& circuit )
+{
+  circuit_common_impl p( circuit );
+  return p.get_circuit_ids();
+}
+
+matrix_chain get_circuit_chain( const stp_circuit& circuit )
+{
+  circuit_common_impl p( circuit );
+  return p.get_circuit_chain();
+}
+
+std::unordered_map<std::string, matrix> get_circuit_str_matrix_map(
+    const stp_circuit& circuit )
+{
+  circuit_common_impl p( circuit );
+  return p.get_str_matrix_map();
+}
+
+std::vector<std::string> get_circuit_expr( const stp_circuit& circuit )
+{
+  circuit_common_impl p( circuit );
+  return p.get_circuit_expr();
+}
+
+/*
+ * Given an stp_circuit in DAG, we first extract matrix chain expressed in
+ * vector, the class is used to normalize it by iterative sorting.
  *
- * The input matrxi format:
+ * The input matrix format:
  * 1000 1011 1 2
  * 0111 0100 1 2
  *
@@ -55,14 +201,13 @@ namespace stp
  * dimensions, the first value is larger and equal than 1)
  * */
 
-class stp_normalize_impl
+class stp_normalize_matrix_impl
 {
  public:
-  stp_normalize_impl( const stp_circuit& circuit, bool& verbose )
+  stp_normalize_matrix_impl( const stp_circuit& circuit, bool& verbose )
       : circuit( circuit ), verbose( verbose )
   {
     // initialization
-    vars_order.clear();
     chain.clear();
 
     I2 = matrix::Zero( 2, 2 );
@@ -71,30 +216,15 @@ class stp_normalize_impl
     PR2 = matrix::Zero( 4, 2 );
     PR2 << 1, 0, 0, 0, 0, 0, 0, 1;
 
-    unsigned num_vars = 0u;
-    for ( const id& pi : circuit.get_inputs() )
-      {
-        num_vars++;
-        vars_order[ pi ] = circuit.get_inputs().size() - num_vars + 1;
-        std::cout << "pi: " << pi << " order: " << vars_order[ pi ]
-                  << std::endl;
-      }
+    nodes = get_circuit_ids( circuit );
+    chain = get_circuit_chain( circuit );
   }
 
   void run()
   {
-    std::cout << "Hello" << std::endl;
-
-    assert( circuit.get_outputs().size() == 1 );
-    const id po = circuit.get_outputs()[ 0 ];
-    get_chain_id( po );
-    print_chain_ids();
     print_expr();
-    get_chain();
-    // print_chain( chain );
 
     auto new_chain = chain_normalize_method1();
-    // print_chain( new_chain );
 
     std::cout << "The final results: \n"
               << matrix_chain_multiply( legal_chain( new_chain ) ) << "\n";
@@ -108,6 +238,7 @@ class stp_normalize_impl
       {
         auto output_chain = reorder( input_chain );
         input_chain = output_chain;
+        output_chain.clear();
       }
 
     return input_chain;
@@ -162,7 +293,6 @@ class stp_normalize_impl
         // swap variable and matrix
         if ( is_variable( mc[ i ] ) && is_matrix( mc[ i + 1 ] ) )
           {
-            std::cout << "swap " << i << " and " << i + 1 << "\n";
             // swap
             matrix temp = kronecker_product( I2, order[ i + 1 ] );
             order[ i + 1 ] = order[ i ];
@@ -176,8 +306,6 @@ class stp_normalize_impl
 
             if ( a == b )
               {
-                std::cout << "PR2"
-                          << "\n";
                 order[ i ] = PR2;
               }
             else
@@ -185,15 +313,9 @@ class stp_normalize_impl
                 // order the variables
                 if ( a > b )
                   {
-                    std::cout << "reoder " << i << " and " << i + 1 << "\n";
-                    matrix temp = order[ i + 1 ];
-                    order[ i + 1 ] = order[ i ];
-                    order[ i ] = temp;
+                    std::swap( order[ i ], order[ i + 1 ] );
 
                     insert_idx.push_back( i );
-
-                    // order.insert( order.begin() + i + count,
-                    // generate_swap_matrix( 2, 2 ) );
                   }
               }
           }
@@ -210,10 +332,6 @@ class stp_normalize_impl
       {
         order.insert( order.begin() + j, swap_matrix2 );
       }
-
-    // std::cout <<
-    // "----------------------------------------------------------------------\n";
-    // print_chain( order );
 
     return order;
   }
@@ -283,59 +401,67 @@ class stp_normalize_impl
   }
 
  private:
-  // get the chain expressed using node ids
-  void get_chain_id( const id& n )
-  {
-    nodes.push_back( n );
-
-    if ( !circuit.is_pi( n ) )
-      {
-        for ( const auto& input : circuit.get_node( n ).get_inputs() )
-          {
-            get_chain_id( input.index );
-          }
-      }
-    else
-      {
-        return;
-      }
-  }
-
-  matrix get_matrix( const uint32_t n )
-  {
-    if ( circuit.is_pi( n ) )
-      {
-        uint32_t order = vars_order[ n ];
-        matrix result( 2, 1 );
-        result << order, order;
-        return result;
-      }
-
-    return circuit.get_node( n ).get_mtx();
-  }
-
-  void get_chain()
-  {
-    for ( const id& n : nodes )
-      {
-        chain.push_back( get_matrix( n ) );
-      }
-  }
-
- private:
   matrix_chain chain;
   bool verbose;
   const stp_circuit& circuit;
-  ids nodes;
-  std::unordered_map<uint32_t, uint32_t>
-      vars_order;  // record the variables order
+  node_ids nodes;
   matrix I2;
   matrix PR2;
 };
 
+/*
+ * The above class deal with the matrix directly which may cause large memory,
+ * we change the way to deal with the strings first.
+ * */
+class stp_normalize_string_impl
+{
+ public:
+  stp_normalize_string_impl( const stp_circuit& circuit, bool& verbose )
+      : circuit( circuit ), verbose( verbose )
+  {
+  }
+
+  void run()
+  {
+    std::cout << "Hello" << std::endl;
+
+    auto map = get_circuit_str_matrix_map( circuit );
+
+    for ( const auto& e : map )
+      {
+        std::cout << "map " << e.first << " \n" << e.second << std::endl;
+      }
+
+    auto expr = get_circuit_expr( circuit );
+    print_expr( expr );
+  }
+
+  void print_expr( const std::vector<std::string>& expr )
+  {
+    std::cout << "[i] expr: ";
+    for ( const auto& e : expr )
+      {
+        std::cout << e << " ";
+      }
+    std::cout << std::endl;
+  }
+
+ private:
+  const stp_circuit& circuit;
+  bool verbose;
+  node_ids nodes;
+  std::unordered_map<std::string, matrix> str2mtx;
+};
+
+void stp_normalize_string( const stp_circuit& circuit, bool verbose = false )
+{
+  stp_normalize_string_impl p( circuit, verbose );
+  p.run();
+}
+
 void stp_normalize( const stp_circuit& circuit, bool verbose = false )
 {
-  stp_normalize_impl p( circuit, verbose );
+  stp_normalize_matrix_impl p( circuit, verbose );
   p.run();
 }
 
