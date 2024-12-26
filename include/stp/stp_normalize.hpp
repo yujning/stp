@@ -40,6 +40,7 @@
 using matrix = Eigen::MatrixXi;            // Defines the type of matrix to use
 using matrix_chain = std::vector<matrix>;  // Defined matrix chain
 using node_ids = std::vector<uint32_t>;
+using expressions = std::vector<std::string>;
 
 namespace stp
 {
@@ -104,9 +105,9 @@ class circuit_common_impl
     return str2mtx;
   }
 
-  std::vector<std::string> get_circuit_expr()
+  expressions get_circuit_expr()
   {
-    std::vector<std::string> expr;
+    expressions expr;
     auto nodes = get_circuit_ids();
 
     for ( const auto& t : nodes )
@@ -183,7 +184,7 @@ std::unordered_map<std::string, matrix> get_circuit_str_matrix_map(
   return p.get_str_matrix_map();
 }
 
-std::vector<std::string> get_circuit_expr( const stp_circuit& circuit )
+expressions get_circuit_expr( const stp_circuit& circuit )
 {
   circuit_common_impl p( circuit );
   return p.get_circuit_expr();
@@ -419,24 +420,116 @@ class stp_normalize_string_impl
   stp_normalize_string_impl( const stp_circuit& circuit, bool& verbose )
       : circuit( circuit ), verbose( verbose )
   {
+    str2mtx = get_circuit_str_matrix_map( circuit );
+
+    if ( verbose )
+      {
+        for ( const auto& e : str2mtx )
+          {
+            std::cout << "map " << e.first << " \n" << e.second << std::endl;
+          }
+      }
   }
 
   void run()
   {
     std::cout << "Hello" << std::endl;
 
-    auto map = get_circuit_str_matrix_map( circuit );
-
-    for ( const auto& e : map )
-      {
-        std::cout << "map " << e.first << " \n" << e.second << std::endl;
-      }
-
     auto expr = get_circuit_expr( circuit );
+    print_expr( expr );
+    reorder( expr );
+    print_expr( expr );
+    reorder( expr );
+    print_expr( expr );
+    reorder( expr );
     print_expr( expr );
   }
 
-  void print_expr( const std::vector<std::string>& expr )
+  bool is_matrix_string( const std::string& str )
+  {
+    if ( str[ 0 ] == 'm' || str[ 0 ] == 'I' || str[ 0 ] == 'P' ||
+         str[ 0 ] == 'W' )
+      {
+        return true;
+      }
+    else
+      {
+        return false;
+      }
+  }
+
+  unsigned get_variable_order( const std::string& str )
+  {
+    return str2mtx[ str ]( 0, 0 );
+  }
+
+  bool is_variable_string( const std::string& str )
+  {
+    return is_matrix_string( str ) == false;
+  }
+
+  void reorder( expressions& expr )
+  {
+    // recode the index of all operations
+    std::vector<std::pair<unsigned, std::string>> to_add;
+    std::vector<unsigned> to_add_W2;
+    std::vector<unsigned> to_delete;
+    std::vector<unsigned> to_swap;
+
+    for ( unsigned i = 0; i < expr.size() - 1u; i++ )
+      {
+        if ( is_variable_string( expr[ i ] ) &&
+             is_matrix_string( expr[ i + 1 ] ) )
+          {
+            to_add.push_back( std::make_pair( i, "I2" ) );
+            to_swap.push_back( i );
+            i++;
+          }
+        else if ( is_variable_string( expr[ i ] ) &&
+                  is_variable_string( expr[ i + 1 ] ) )
+          {
+            if ( expr[ i ] == expr[ i + 1 ] )
+              {
+                to_delete.push_back( i );
+                i++;
+              }
+            else
+              {
+                auto a = get_variable_order( expr[ i ] );
+                auto b = get_variable_order( expr[ i + 1 ] );
+                if ( a < b )
+                  {
+                    to_swap.push_back( i );
+                    to_add.push_back( std::make_pair( i, "W2" ) );
+                  }
+              }
+          }
+      }
+
+    // first swap
+    for ( const auto& j : to_swap )
+      {
+        std::swap( expr[ j ], expr[ j + 1 ] );
+      }
+    // then insert PR2
+    for ( const auto& j : to_delete )
+      {
+        expr[ j ] = "PR2";
+      }
+    // finally add
+    std::sort( to_add.begin(), to_add.end(),
+               []( const std::pair<unsigned, std::string>& a,
+                   const std::pair<unsigned, std::string>& b ) {
+                 return a.first > b.first;
+               } );
+
+    for ( const auto& j : to_add )
+      {
+        expr.insert( expr.begin() + j.first, j.second );
+      }
+  }
+
+  void print_expr( const expressions& expr )
   {
     std::cout << "[i] expr: ";
     for ( const auto& e : expr )
