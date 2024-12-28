@@ -433,15 +433,16 @@ class stp_normalize_string_impl
 
   void run()
   {
-    std::cout << "Hello" << std::endl;
-
     auto expr = get_circuit_expr( circuit );
-    print_expr( expr );
-    reorder( expr );
-    print_expr( expr );
-    reorder( expr );
-    print_expr( expr );
-    reorder( expr );
+    unsigned start_index = 0;
+
+    while ( !is_normal_expressions( expr, start_index ) )
+      {
+        reorder( expr, start_index );
+        std::cout << "vec size: " << expr.size()
+                  << " start index: " << start_index << std::endl;
+      }
+
     print_expr( expr );
   }
 
@@ -468,7 +469,39 @@ class stp_normalize_string_impl
     return is_matrix_string( str ) == false;
   }
 
-  void reorder( expressions& expr )
+  bool is_normal_expressions( const expressions& expr, unsigned& start_index )
+  {
+    for ( unsigned i = 0; i < expr.size() - 1u; i++ )
+      {
+        if ( is_variable_string( expr[ i ] ) &&
+             is_matrix_string( expr[ i + 1 ] ) )
+          {
+            start_index = i;
+            return false;
+          }
+        else if ( is_variable_string( expr[ i ] ) &&
+                  is_variable_string( expr[ i + 1 ] ) )
+          {
+            auto a = get_variable_order( expr[ i ] );
+            auto b = get_variable_order( expr[ i + 1 ] );
+
+            if ( a <= b )
+              {
+                start_index = i;
+                return false;
+              }
+          }
+        else
+          {
+            continue;
+          }
+      }
+
+    start_index = 0;
+    return true;
+  }
+
+  void reorder( expressions& expr, const unsigned& start_index )
   {
     // recode the index of all operations
     std::vector<std::pair<unsigned, std::string>> to_add;
@@ -476,7 +509,7 @@ class stp_normalize_string_impl
     std::vector<unsigned> to_delete;
     std::vector<unsigned> to_swap;
 
-    for ( unsigned i = 0; i < expr.size() - 1u; i++ )
+    for ( unsigned i = start_index; i < expr.size() - 1u; i++ )
       {
         if ( is_variable_string( expr[ i ] ) &&
              is_matrix_string( expr[ i + 1 ] ) )
@@ -503,6 +536,10 @@ class stp_normalize_string_impl
                     to_add.push_back( std::make_pair( i, "W2" ) );
                   }
               }
+          }
+        else
+          {
+            continue;
           }
       }
 

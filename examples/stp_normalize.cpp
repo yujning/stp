@@ -28,7 +28,7 @@ int main( int argc, char **argv )
     }
   c.update_levels();
 
-  stp_normalize( c );
+  // stp_normalize( c );
   stp_normalize_string( c );
 
   return 0;
