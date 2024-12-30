@@ -435,15 +435,15 @@ class stp_normalize_string_impl
   {
     auto expr = get_circuit_expr( circuit );
     unsigned start_index = 0;
+    print_expr( expr );
 
     while ( !is_normal_expressions( expr, start_index ) )
       {
         reorder( expr, start_index );
         std::cout << "vec size: " << expr.size()
                   << " start index: " << start_index << std::endl;
+        print_expr( expr );
       }
-
-    print_expr( expr );
   }
 
   bool is_matrix_string( const std::string& str )
@@ -501,11 +501,43 @@ class stp_normalize_string_impl
     return true;
   }
 
+  void identity_string_processing( std::string& str )
+  {
+    if ( str[ 0 ] != 'I' )
+      {
+        str = "I2" + str;
+      }
+    else
+      {
+        std::string number_string;
+        std::string remaining_string;
+        bool extract_complete = false;
+
+        for ( unsigned i = 1u; i < str.size(); i++ )
+          {
+            if ( std::isdigit( str[ i ] ) && !extract_complete )
+              {
+                number_string += str[ i ];
+              }
+            else
+              {
+                extract_complete = true;
+                remaining_string += str[ i ];
+              }
+          }
+
+        assert( !number_string.empty() );
+        auto number = std::stoi( number_string );
+        auto current_number = 2 * number;
+
+        str = "I" + std::to_string( current_number ) + remaining_string;
+      }
+  }
+
   void reorder( expressions& expr, const unsigned& start_index )
   {
     // recode the index of all operations
     std::vector<std::pair<unsigned, std::string>> to_add;
-    std::vector<unsigned> to_add_W2;
     std::vector<unsigned> to_delete;
     std::vector<unsigned> to_swap;
 
@@ -514,7 +546,7 @@ class stp_normalize_string_impl
         if ( is_variable_string( expr[ i ] ) &&
              is_matrix_string( expr[ i + 1 ] ) )
           {
-            to_add.push_back( std::make_pair( i, "I2" ) );
+            identity_string_processing( expr[ i + 1 ] );
             to_swap.push_back( i );
             i++;
           }
