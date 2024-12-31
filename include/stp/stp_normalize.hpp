@@ -33,6 +33,7 @@
 
 #include <Eigen/Dense>
 #include <algorithm>
+#include <regex>
 
 #include "stp/stp_eigen.hpp"
 #include "stp/stp_utils.hpp"
@@ -429,6 +430,11 @@ class stp_normalize_string_impl
             std::cout << "map " << e.first << " \n" << e.second << std::endl;
           }
       }
+
+    PR2 = matrix::Zero( 4, 2 );
+    PR2 << 1, 0, 0, 0, 0, 0, 0, 1;
+
+    W2 = generate_swap_matrix( 2, 2 );
   }
 
   void run()
@@ -440,10 +446,18 @@ class stp_normalize_string_impl
     while ( !is_normal_expressions( expr, start_index ) )
       {
         reorder( expr, start_index );
-        std::cout << "vec size: " << expr.size()
-                  << " start index: " << start_index << std::endl;
-        print_expr( expr );
+        if ( verbose )
+          {
+            std::cout << "vec size: " << expr.size()
+                      << " start index: " << start_index << std::endl;
+          }
       }
+    print_expr( expr );
+
+    auto chain = expr_to_matrix_chain( expr );
+
+    std::cout << "The final results: \n"
+              << matrix_chain_multiply( chain ) << "\n";
   }
 
   bool is_matrix_string( const std::string& str )
@@ -501,11 +515,36 @@ class stp_normalize_string_impl
     return true;
   }
 
+  // Given a string like "I9m8", extract the digit after "I" and the remaining
+  // string
+  struct identity_strings
+  {
+    unsigned dimensions;
+    std::string suffix;
+  };
+
+  identity_strings extract_num_and_suffix( const std::string& str )
+  {
+    std::regex pattern( R"(I(\d+)([A-Za-z0-9]+))" );
+    std::smatch matches;
+
+    if ( std::regex_search( str, matches, pattern ) )
+      {
+        identity_strings result;
+        result.dimensions = std::stoi( matches[ 1 ].str() );
+        result.suffix = matches[ 2 ].str();
+
+        return result;
+      }
+
+    assert( false && "no matching found\n" );
+  }
+
   void identity_string_processing( std::string& str )
   {
     if ( str[ 0 ] != 'I' )
       {
-        str = "I2" + str;
+        str = "I1" + str;  // I1 means the identity matrix with dimensions 2^1
       }
     else
       {
@@ -528,7 +567,7 @@ class stp_normalize_string_impl
 
         assert( !number_string.empty() );
         auto number = std::stoi( number_string );
-        auto current_number = 2 * number;
+        auto current_number = ++number;
 
         str = "I" + std::to_string( current_number ) + remaining_string;
       }
@@ -598,6 +637,81 @@ class stp_normalize_string_impl
       }
   }
 
+  unsigned fast_two_pow( unsigned base, unsigned exponent )
+  {
+    unsigned result = 1;
+    while ( exponent > 0 )
+      {
+        if ( exponent % 2 == 1 )
+          {
+            result *= base;
+          }
+
+        base *= base;
+        exponent /= 2;
+      }
+
+    return result;
+  }
+
+  // translate the expressions into matrix
+  matrix_chain expr_to_matrix_chain( expressions& expr )
+  {
+    matrix_chain chain;
+
+    for ( const auto& e : expr )
+      {
+        if ( e == "W2" )
+          {
+            chain.push_back( W2 );
+          }
+        else if ( e == "PR2" )
+          {
+            chain.push_back( PR2 );
+          }
+        else if ( e[ 0 ] == 'm' )
+          {
+            chain.push_back( str2mtx[ e ] );
+          }
+        else if ( e[ 0 ] == 'I' )
+          {
+            // IXmX style
+            auto result = extract_num_and_suffix( e );
+            auto dim = fast_two_pow( 2, result.dimensions );
+            matrix identity_matrix;
+            identity_matrix.setIdentity( dim, dim );
+
+            matrix suffix_matrix;
+
+            if ( result.suffix == "W2" )
+              {
+                suffix_matrix = W2;
+              }
+            else if ( result.suffix == "PR2" )
+              {
+                suffix_matrix = PR2;
+              }
+            else
+              {
+                assert( result.suffix[ 0 ] == 'm' );
+                suffix_matrix = str2mtx[ result.suffix ];
+              }
+
+            chain.push_back(
+                kronecker_product( identity_matrix, suffix_matrix ) );
+          }
+        else
+          {
+            if ( verbose )
+              {
+                std::cout << e << " is a primary input variable\n";
+              }
+          }
+      }
+
+    return chain;
+  }
+
   void print_expr( const expressions& expr )
   {
     std::cout << "[i] expr: ";
@@ -613,6 +727,8 @@ class stp_normalize_string_impl
   bool verbose;
   node_ids nodes;
   std::unordered_map<std::string, matrix> str2mtx;
+  matrix PR2;
+  matrix W2;
 };
 
 void stp_normalize_string( const stp_circuit& circuit, bool verbose = false )
