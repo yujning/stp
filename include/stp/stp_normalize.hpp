@@ -499,7 +499,7 @@ class stp_normalize_string_impl
             auto a = get_variable_order( expr[ i ] );
             auto b = get_variable_order( expr[ i + 1 ] );
 
-            if ( a <= b )
+            if ( a >= b )
               {
                 start_index = i;
                 return false;
@@ -601,7 +601,7 @@ class stp_normalize_string_impl
               {
                 auto a = get_variable_order( expr[ i ] );
                 auto b = get_variable_order( expr[ i + 1 ] );
-                if ( a < b )
+                if ( a > b )
                   {
                     to_swap.push_back( i );
                     to_add.push_back( std::make_pair( i, "W2" ) );
