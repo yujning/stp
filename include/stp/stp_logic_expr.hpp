@@ -546,6 +546,132 @@ std::vector<std::string> matrix_split( const std::string& input,
   return result;
 }
 
+
+matrix_chain cuda_normalize_matrix( matrix_chain& mc )
+{
+  matrix Mr( 4, 2 );  // Reduced power matrix
+  Mr << 1, 0, 0, 0, 0, 0, 0, 1;
+
+  matrix I2( 2, 2 );  // Identity matrix
+  I2 << 1, 0, 0, 1;
+
+  matrix normal_matrix;
+  int p_variable;
+  int p;
+
+  int max = 0;  // the max is the number of variable
+
+  for ( int i = 0; i < mc.size(); i++ )
+    {
+      if ( mc[ i ]( 0, 0 ) > max )
+        {
+          max = mc[ i ]( 0, 0 );
+        }
+    }
+
+  std::vector<int> idx( max + 1 );  // id[0] is the max of idx
+  p_variable = mc.size() - 1;
+
+  while ( p_variable >= 0 )
+    {
+      bool find_variable = false;
+      matrix& matrix = mc[ p_variable ];
+      int var = get_variable( matrix );
+
+      if ( var != 0 )  // 1:find a variable
+        {
+          if ( idx[ var ] ==
+               0 )  // the variable appears for the first time ：end : not_end
+            {
+              idx[ var ] = idx[ 0 ] + 1;
+              idx[ 0 ]++;
+
+              if ( p_variable ==
+                   mc.size() - 1 )  // the variable shows in the end
+                {
+                  mc.pop_back();
+                  p_variable--;
+                  continue;
+                }
+            }
+          else  // the variable appears for the not first time
+            {
+              if ( idx[ var ] == idx[ 0 ] )
+                {
+                  find_variable = true;
+                }
+              else
+                {
+                  find_variable = true;
+                  mc.push_back( generate_swap_matrix(
+                      2, 1 << ( idx[ 0 ] - idx[ var ] ) ) );
+
+                  for ( int i = 1; i <= max; i++ )
+                    {
+                      if ( idx[ i ] != 0 && idx[ i ] > idx[ var ] ) idx[ i ]--;
+                    }
+
+                  idx[ var ] = idx[ 0 ];
+                }
+            }
+
+          matrix_chain mc_temp;
+          mc_temp.clear();
+
+          for ( p = p_variable + 1; p < mc.size(); p++ )
+            {
+              mc_temp.push_back( mc[ p ] );
+            }
+
+          while ( p > p_variable + 1 )
+            {
+              mc.pop_back();
+              p--;
+            }
+
+          if ( mc_temp.size() > 0 )
+            {
+              mc.push_back( matrix_chain_multiply( mc_temp ) );
+            }
+
+          if ( p_variable != mc.size() - 1 )
+            {
+              mc[ p_variable ] = kronecker_product( I2, mc[ p_variable + 1 ] );
+              mc.pop_back();
+            }
+
+          if ( find_variable )
+            {
+              mc.push_back( Mr );
+            }
+          continue;
+        }
+      else
+        {
+          p_variable--;
+        }
+    }
+
+  for ( int i = max; i > 0; i-- )
+    {
+      mc.push_back( generate_swap_matrix( 2, pow( 2, idx[ 0 ] - idx[ i ] ) ) );
+
+      for ( int j = 1; j <= max; j++ )
+        {
+          if ( ( idx[ j ] != 0 ) && ( idx[ j ] > idx[ i ] ) )
+            {
+              idx[ j ]--;
+            }
+        }
+
+      idx[ i ] = max;
+    }
+
+  
+  return mc;
+}
+
+
 matrix normalize_matrix( matrix_chain mc )
 {
   matrix Mr( 4, 2 );  // Reduced power matrix

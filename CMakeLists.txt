@@ -1,17 +1,25 @@
 # CMakeLists.txt
 cmake_minimum_required(VERSION 3.12)
-project(stp LANGUAGES CXX)
+enable_language(CUDA)
+project(stp LANGUAGES CXX CUDA)
+
+
 
 # Set C++ standard
 set(STP_CXX_STANDARD "17" CACHE STRING "C++ standard")
 set(CMAKE_CXX_STANDARD ${STP_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+
+# Set Eigen include directory
+include_directories(/usr/local/include/eigen3)
+
 # Options
 option(STP_EXAMPLES "Build examples" ON)
 option(STP_TEST "Build tests" ON)
 
-add_compile_options(-O4 -W -Wall -Wextra)
+ add_compile_options(-O4 -W -Wall -Wextra)
+
 
 # Add main include files
 add_subdirectory(include)
