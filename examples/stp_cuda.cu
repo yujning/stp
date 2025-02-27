@@ -131,7 +131,7 @@ std::vector<int32_t> In_KR_Matrix(int32_t dim, std::vector<int32_t>& A)
         return C;
     }
 
-    std::cout << "In_KR_Matrix threads > 1025"<< std::endl;
+    //std::cout << "In_KR_Matrix threads > 1025"<< std::endl;
 
     int32_t *d_A,*d_C;
 
@@ -264,7 +264,8 @@ std::vector<int32_t> Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
     int32_t A_col = A.size() - 1;
 
     //calculate size of result matrix
-    int32_t C_len = A_row * dim + 1;
+    //int32_t C_len = A_row * dim + 1;
+    int32_t C_len = A_col * dim + 1;
 
     std::vector<int32_t> C(C_len);
 
@@ -286,7 +287,7 @@ std::vector<int32_t> Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
 
     }
 
-    std::cout << "Matrix_KR_In threads > 1025"<< std::endl;
+    //std::cout << "Matrix_KR_In threads > 1025"<< std::endl;
 
     int32_t *d_A,*d_C;
     //compute space
@@ -338,7 +339,7 @@ std::vector<int32_t> Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
     //divide into blocks (by column)
     else
     {
-        std::cout<< "b "<<std::endl;
+        //std::cout<< "b "<<std::endl;
         int32_t remain_num = C_len - 1; //C remaining unassigned columns
         int32_t idx_offset = 0;  //thread offset
 
@@ -581,7 +582,7 @@ std::vector<int32_t> my_semi_tensor_product(std::vector<int32_t>& A, std::vector
 
 
 extern "C"
-//my_chain_multiply_by_multi_thread                                                线程数
+//my_chain_multiply_by_multi_thread                                                
 std::vector<int32_t> my_chain_multiply_by_multi_thread( std::vector<std::vector<int32_t>>& mc, bool verbose)
 {
   std::vector<int32_t> result=mc[0];

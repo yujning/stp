@@ -31,9 +31,9 @@ int main( int argc, char **argv )
   std::cout << "***************************************" << std::endl;
   circuit_normalize_impl cn( c, false );
 
-  std::string m1 = cn.run_str( false,false );
-  std::cout << "old method\n";
-  std::cout << m1 << "\n";
+//   std::string m1 = cn.run_str( false,false );
+//   std::cout << "old method\n";
+//   std::cout << m1 << "\n";
 
   // std::string m2 = cn.run_str( true,false );
   // std::cout << "new method\n";
@@ -49,11 +49,11 @@ int main( int argc, char **argv )
   auto time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   std::cout << " time: " << time << " us\n"<< std::endl;
 
-  stp_simulator sim( c, true );
-  std::cout << "simulation result\n";
-  sim.run();
-  sim.print_info();
-  std::cout << sim.run() << "\n";
+  // stp_simulator sim( c, true );
+  // std::cout << "simulation result\n";
+  // sim.run();
+  // sim.print_info();
+  // std::cout << sim.run() << "\n";
 
 
   return 0;
