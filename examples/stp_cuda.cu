@@ -14,7 +14,7 @@
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Sparse"
 
-uint64_t Total_Thread=125952; //total supported threads
+uint64_t Total_Thread=0; //total supported threads
 
 
 extern "C"
@@ -185,7 +185,6 @@ std::vector<int32_t> In_KR_Matrix(int32_t dim, std::vector<int32_t>& A)
     //Divide into blocks (by column)
     else
     {
-        std::cout<< "c "<<std::endl;
         int32_t remain_num = C_len - 1; //remaining unassigned columns in C
         int32_t idx_offset = 0;  //Thread offset
 
@@ -211,9 +210,7 @@ std::vector<int32_t> In_KR_Matrix(int32_t dim, std::vector<int32_t>& A)
 
                 In_KR_Matrix_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, d_A, A_col, d_C, C_len - 1);  
                 cudaDeviceSynchronize(); //Wait for the kernel to complete
-                //Calculate the thread offset
-                idx_offset += Total_Thread;
-                cudaDeviceSynchronize(); //wait for the kernel to complete
+
                 //Calculate thread offset
                 idx_offset += Total_Thread;
                 remain_num -= Total_Thread; //exit the loop                
@@ -339,7 +336,6 @@ std::vector<int32_t> Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
     //divide into blocks (by column)
     else
     {
-        //std::cout<< "b "<<std::endl;
         int32_t remain_num = C_len - 1; //C remaining unassigned columns
         int32_t idx_offset = 0;  //thread offset
 
@@ -365,9 +361,7 @@ std::vector<int32_t> Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
 
                 Matrix_KR_In_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, d_A + 1, A_col, d_C, C_len - 1);  
                 cudaDeviceSynchronize(); //wait for the kernel to complete
-                //calculate thread offset
-                idx_offset += Total_Thread;
-                cudaDeviceSynchronize(); //wait for the kernel to complete
+
                 //calculate thread offset
                 idx_offset += Total_Thread;
                 remain_num -= Total_Thread; //exit the loop                
@@ -421,7 +415,7 @@ std::vector<int32_t> my_semi_tensor_product(std::vector<int32_t>& A, std::vector
     if(A_col % B_row == 0)
     {
         //calculate size of result matrix
-        int32_t C_len = A_col * B_col / B_row + 1;
+        int32_t C_len = (int64_t)A_col * B_col / B_row + 1;
 
         if(C_len <= 20000)
         {
@@ -532,7 +526,7 @@ std::vector<int32_t> my_semi_tensor_product(std::vector<int32_t>& A, std::vector
                     Matrix_Multipiy_Kernel<<<numBlocks, threadsPerBlock>>>(idx_offset, d_A, A_col, d_B, B_col, d_C, C_len - 1, A_col / B_row);
                     cudaDeviceSynchronize(); //wait for the kernel to complete
                     //calculate thread offset
-                    idx_offset += Total_Thread;
+                    //idx_offset += Total_Thread;
                     cudaDeviceSynchronize(); //wait for the kernel to complete
                     //计算线程偏移
                     idx_offset += Total_Thread;

@@ -18,7 +18,7 @@ include_directories(/usr/local/include/eigen3)
 option(STP_EXAMPLES "Build examples" ON)
 option(STP_TEST "Build tests" ON)
 
- add_compile_options(-O4 -W -Wall -Wextra)
+ add_compile_options(-g -O4 -W -Wall -Wextra)
 
 
 # Add main include files
