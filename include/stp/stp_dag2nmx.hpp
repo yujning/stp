@@ -38,6 +38,7 @@
 #include "stp/stp_circuit.hpp"
 #include "stp/stp_logic_expr.hpp"
 #include "stp/stp_utils.hpp"
+#include "stp/stp_cuda.hpp"
 
 using stp_expr = std::vector<uint32_t>;
 
@@ -46,7 +47,7 @@ namespace stp
 class circuit_normalize_impl
 {
  public:
-  circuit_normalize_impl( const stp_circuit& circuit, const bool& verbose )
+  circuit_normalize_impl( const stp_circuit& circuit, const bool& verbose)
       : circuit( circuit ), verbose( verbose )
   {
   }
@@ -120,31 +121,235 @@ class circuit_normalize_impl
     return result;
   }
 
-  std::string run_str( bool new_ = false )
+  std::vector<int32_t> run_cuda1(stp_expr& all_pi)
   {
-    matrix m;
+    initialization();
 
-    if ( new_ )
+    assert( circuit.get_outputs().size() == 1 );
+
+    const id po = circuit.get_outputs()[ 0 ];
+
+    get_chain_code( po );
+
+    if ( verbose )
+	  {
+		  print_expr( mc );
+	  }
+
+	  //Merge identical variables
+    stp_expr expr_ops = move_vars( mc );
+
+	  //Variable right shift
+    stp_expr normal = move_vars_to_rightside_1( expr_ops );
+       
+    all_pi = collect_pi(normal);
+	
+	  //matrix encoding
+    std::vector<int32_t> result_vec;
+
+	  bool I_flag = false; //The previous one is an identity matrix
+	  int32_t I_dim = 0;  //dim of Identity matrix
+
+	//读取字符串信息 进行半张量积
+	for ( int32_t i = 0; i < normal.size() - circuit.get_inputs().size(); i++ )
+	{
+		uint32_t n = normal[i];
+
+		//Special matrix
+		if( n >= circuit.get_nodes().size() )
+		{
+			assert( other_matrix.find( n ) != other_matrix.end() );
+			std::string str = other_matrix[ n ];
+
+			//Power matrix
+			if ( str == "Mr" )
+			{
+				std::vector<int32_t> Mr = {4, 0, 3};
+
+				//The chain has only one matrix, return
+				if(i == 0)
+				{
+					result_vec = Mr;
+				}
+				else
+				{
+					if(I_flag)
+					{
+						std::vector<int32_t> temp = In_KR_Matrix(I_dim,Mr);
+						result_vec = my_semi_tensor_product(result_vec, temp);
+
+						I_dim = 0;
+						I_flag = false;
+					}
+					else
+					{
+						result_vec = my_semi_tensor_product(result_vec, Mr);
+					}
+				}
+			}
+			//Identity matrix
+			if ( str[ 0 ] == 'I' )
+			{
+				//str.erase( str.begin() );
+				I_flag = true;
+				//I_dim = std::stoi( str );  //string to decimal
+				I_dim = std::stoi( str.substr(1) );  //string to decimal
+			}
+			//Swap matrix
+			if ( str[ 0 ] == 'W' )
+			{
+				//Delete the first character of the string
+				str.erase( str.begin() );
+				assert( std::stoi( str ) == 2 );
+
+				std::vector<int32_t> M = {4, 0, 2, 1, 3};
+
+				//The chain has only one matrix, return
+				if(i == 0)
+				{
+					result_vec = M;
+				}
+				else
+				{
+					if(I_flag)
+					{
+						std::vector<int32_t> temp = In_KR_Matrix(I_dim,M);
+						result_vec = my_semi_tensor_product(result_vec, temp);
+
+						I_dim = 0;
+						I_flag = false;
+					}
+					else
+					{
+						result_vec = my_semi_tensor_product(result_vec, M);
+					}
+				}
+			}
+		}
+		else
+		{
+			matrix matrix_temp = circuit.get_node( n ).get_mtx();
+			std::vector<int32_t> Vec = Matrix_to_Vec(matrix_temp);
+
+			if(i == 0)
+			{
+				result_vec = Vec;
+			}
+			else
+			{
+				if(I_flag)
+				{
+					std::vector<int32_t> temp = In_KR_Matrix(I_dim,Vec);
+					result_vec = my_semi_tensor_product(result_vec, temp);
+
+					I_dim = 0;
+					I_flag = false; 
+				}
+				else
+				{
+					result_vec = my_semi_tensor_product(result_vec, Vec);
+				}
+			}
+		}
+	}
+
+	assert( I_flag == false ); 
+
+    return result_vec;
+  }
+
+
+  std::vector<int32_t> run_cuda()
+  {
+    initialization();
+    assert(circuit.get_outputs().size() == 1);
+    const id po = circuit.get_outputs()[0];
+    
+    get_chain_code(po);
+
+    if(verbose)
+    {
+      print_expr(mc);
+    }
+
+    get_chain();
+
+    matrix_chain temp = cuda_normalize_matrix( chain );
+
+    std::vector<std::vector<int32_t>> result_cuda_vec = Matrix_to_Vec_chain(temp);
+
+    std::vector<int32_t> result_cuda = my_chain_multiply_by_multi_thread(result_cuda_vec);
+
+    return result_cuda;
+  }
+
+  std::string run_str( bool new_ = false, bool _using_CUDA = false )
+  {
+    std::string str = "";
+    //using cuda
+    if(_using_CUDA)
+    {
+        stp_expr all_pi;
+        std::vector<int32_t> m = run_cuda1(all_pi);
+
+        std::vector<int32_t> out_vec(m.size() - 1);
+        for(int i = 1; i < m.size(); i++)
+        {
+          int32_t temp = m.size() - 1 -i;
+          int32_t input_num = all_pi.size();
+          int32_t out_temp=0;
+
+          while(input_num!=0)
+          {
+            out_temp += temp % 2 * pow(2 , all_pi[all_pi.size() - input_num]);
+            temp = temp / 2;
+            input_num--;
+          }
+
+          out_vec[out_temp] = m[i];
+
+        }
+        for(int i = out_vec.size()- 1; i >=0; i--)
+        {
+          if(out_vec[i] == 1) 
+          {
+            str += '0';
+          }
+          else if(out_vec[i] == 0) 
+          {
+            str += '1';
+          }
+          else
+          {
+            std::cout<<"str err"<<std::endl;
+          }
+        }
+    }
+    else
+    {
+      matrix m;
+
+      if(new_)   
       {
         m = new_run();
       }
-    else
+      else
       {
         m = run();
       }
 
-    std::string str = "";
-    for ( int i = 0; i < m.cols(); i++ )
+      for(int i = 0; i < m.cols(); i++)
       {
-        if ( m( 0, i ) == 0 )
-          {
-            str += '0';
-          }
+        if(m(0, i) == 0) 
+        {
+          str += '0';
+        }
         else
-          {
-            str += '1';
-          }
+        {
+          str += '1';
+        }
       }
+    }
     return str;
   }
 
@@ -236,6 +441,184 @@ class circuit_normalize_impl
   }
 
   /******new method******/
+stp_expr move_vars_to_rightside_1(const stp_expr& inputs) {
+    stp_expr new_expr;
+    stp_expr temp_vars;
+    int variable_count = 0;  
+
+    for (size_t i = 0; i < inputs.size(); i++) {
+      uint32_t t = inputs[i]; 
+        if (!circuit.is_pi(t)) {
+            if (t >= circuit.get_nodes().size()) {
+                if (variable_count == 0) {
+                    new_expr.push_back(inputs[i]);
+                } 
+                else{
+                  std::string str = other_matrix[t];
+                  if (str[0] == 'I') {
+                      uint32_t dim;
+
+                      size_t digit_start = str.find_first_of("0123456789");
+
+                      if (digit_start != std::string::npos) 
+                      {
+                        std::string number_part = str.substr( digit_start );
+
+                       dim = std::stoi( number_part );
+                      } 
+                      else 
+                      {
+                        assert( false && "No number found." );
+                      }
+                                        //uint32_t dim = (str[1] - '0');  
+                    dim *= std::pow(2, variable_count);
+                    std::string new_str = "I" + std::to_string(dim);
+                    other_matrix[other] = new_str;
+                    new_expr.push_back(other);
+                    new_expr.push_back(inputs[i + 1]);
+                    ++i; 
+                    other++;
+                  }
+                  else {
+                    int dim = std::pow(2, variable_count);
+                    std::string new_str = "I" + std::to_string(dim);
+                    other_matrix[other] = new_str;
+                    new_expr.push_back(other);
+                    new_expr.push_back(inputs[i]);
+                    other++;
+                  }
+                }
+            }else {
+                if (variable_count == 0) {
+                    new_expr.push_back(inputs[i]);
+                } else {
+                    int dim = std::pow(2, variable_count);
+                    std::string new_str = "I" + std::to_string(dim);
+                    other_matrix[other] = new_str;
+                    new_expr.push_back(other);
+                    new_expr.push_back(inputs[i]);
+                    other++;
+                }
+            }
+        } else {
+            variable_count++;
+            temp_vars.push_back(inputs[i]);
+        }
+    }
+
+    new_expr.insert(new_expr.end(), temp_vars.begin(), temp_vars.end());
+    return new_expr;
+}
+
+  stp_expr move_vars(stp_expr inputs) {
+    stp_expr result_expr;
+
+    while (!inputs.empty()) {
+        bool pair_found = false; 
+        for (size_t i = 0; i < inputs.size(); ++i) {
+            uint32_t t = inputs[i];  
+
+            if (circuit.is_pi(t)) { 
+                size_t first_var = i;
+                size_t second_var = std::distance(inputs.begin(), std::find(inputs.begin() + i + 1, inputs.end(), t));
+
+                if (second_var != inputs.size()) {
+                    result_expr.insert(result_expr.end(), inputs.begin(), inputs.begin() + first_var);
+
+                    for (size_t k = first_var + 1; k < second_var; ++k) {
+                        uint32_t temp_t = inputs[k];
+                        if (circuit.is_pi(temp_t)) {
+                            other_matrix[other] = "W2";
+                            result_expr.push_back(other);
+                            result_expr.push_back(inputs[k]);
+                            other++;
+                        }
+                        else {
+                          if (temp_t >= circuit.get_nodes().size()) {
+                            std::string str = other_matrix[temp_t];
+                            if (str[0] == 'I') {
+                              uint32_t dim;
+
+                                size_t digit_start = str.find_first_of("0123456789");
+
+                                if (digit_start != std::string::npos) 
+                                {
+                                  std::string number_part = str.substr( digit_start );
+
+                                   dim = std::stoi( number_part ) * 2;
+                                } 
+                                else 
+                                {
+                                  assert( false && "No number found." );
+                                }
+                                std::string new_str = "I" + std::to_string(dim);
+                                other_matrix[other] = new_str;
+                                result_expr.push_back(other);
+                                result_expr.push_back(inputs[k + 1]);
+                                ++k; 
+                                other++;
+                            }
+                            else {
+                                other_matrix[other] = "I2";
+                                result_expr.push_back(other);
+                                result_expr.push_back(inputs[k]);
+                                other++;
+                            }
+                          }
+                          else {
+                                other_matrix[other] = "I2";
+                                result_expr.push_back(other);
+                                result_expr.push_back(inputs[k]);
+                                other++;
+                          }   
+                        }
+                    }
+
+                    other_matrix[other] = "Mr";
+                    result_expr.push_back(other);
+                    result_expr.push_back(t);
+                    other++;
+
+                    result_expr.insert(result_expr.end(), inputs.begin() + second_var + 1, inputs.end());
+
+                    inputs = result_expr;
+                    result_expr.clear();
+                    pair_found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!pair_found) {
+            result_expr.insert(result_expr.end(), inputs.begin(), inputs.end());
+            break;
+        }
+    }
+
+    return result_expr;
+  }
+
+  stp_expr collect_pi(const stp_expr& inputs)
+{
+    stp_expr collected_pi;
+
+    for (int i = inputs.size() - 1; i > 0; i--)
+    {
+      uint32_t t = inputs[i];
+      if (circuit.is_pi(t))
+      {
+        collected_pi.push_back(inputs[i]);
+      }
+      else
+      {
+          break;
+      }
+    }
+
+    //std::reverse(collected_pi.begin(), collected_pi.end());
+    return collected_pi;
+}
+
   stp_expr move_vars_to_rightside( const stp_expr& inputs )
   {
     stp_expr new_expr;

@@ -35,8 +35,9 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-// include a kronecker product headfile (offically unsupported in eigen)
+//include a kronecker product headfile (offically unsupported in eigen)
 #include <unsupported/Eigen/KroneckerProduct>
+
 
 #include <iostream>
 #include <numeric>
@@ -128,6 +129,7 @@ inline matrix kronecker_product( const matrix& A, const matrix& B )
 
   matrix result( KP );
 
+
   return result;
 }
 
@@ -195,6 +197,7 @@ class semi_tensor_product_impl
 
     Eigen::SparseMatrix<int> KP = sparse_KPa * sparse_KPb;
     matrix result( KP );
+
 
     return result;
   }
