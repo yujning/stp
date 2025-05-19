@@ -39,11 +39,15 @@ int main( int argc, char **argv )
   // std::cout << "new method\n";
   // std::cout << m2 << "\n";
 
+bool use_cuda = false;
+#ifdef STP_ENABLE_CUDA
+  use_cuda = true;
   Get_Total_Thread_Num();
+#endif
 
   auto start = std::chrono::high_resolution_clock::now();
-  std::string m3 = cn.run_str( false,true );
-  std::cout << "cuda method\n";
+  std::string m3 = cn.run_str( false,use_cuda );
+  std::cout << "cuda " << (use_cuda ? "ON" : "OFF") << "\n";
   std::cout << m3 << "\n";
   auto end = std::chrono::high_resolution_clock::now();
   auto time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();

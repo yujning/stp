@@ -38,7 +38,9 @@
 #include "stp/stp_circuit.hpp"
 #include "stp/stp_logic_expr.hpp"
 #include "stp/stp_utils.hpp"
+#ifdef STP_ENABLE_CUDA
 #include "stp/stp_cuda.hpp"
+#endif
 
 using stp_expr = std::vector<uint32_t>;
 
@@ -121,6 +123,7 @@ class circuit_normalize_impl
     return result;
   }
 
+#ifdef STP_ENABLE_CUDA
   std::vector<int32_t> run_cuda1(stp_expr& all_pi)
   {
     initialization();
@@ -282,11 +285,13 @@ class circuit_normalize_impl
 
     return result_cuda;
   }
+#endif
 
   std::string run_str( bool new_ = false, bool _using_CUDA = false )
   {
     std::string str = "";
     //using cuda
+#ifdef STP_ENABLE_CUDA
     if(_using_CUDA)
     {
         stp_expr all_pi;
@@ -324,9 +329,10 @@ class circuit_normalize_impl
             std::cout<<"str err"<<std::endl;
           }
         }
+        return str;
     }
-    else
-    {
+#endif
+
       matrix m;
 
       if(new_)   
@@ -349,7 +355,7 @@ class circuit_normalize_impl
           str += '1';
         }
       }
-    }
+    
     return str;
   }
 

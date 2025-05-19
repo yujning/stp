@@ -1,14 +1,15 @@
-
-#Set CUDA architecture (for RTX 3090)
-set(CMAKE_CUDA_ARCHITECTURES 86)
-#Set CUDA compiler options to generate position-independent code
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler -fPIC")
-include_directories(../include)
-add_library(  stp_cuda  STATIC stp_cuda.cu)
-set_target_properties( stp_cuda
-                       PROPERTIES CUDA_SEPARABLE_COMPILATION ON
-                      )
-target_compile_features(stp_cuda PUBLIC cxx_std_17)
+if (STP_ENABLE_CUDA)
+  #Set CUDA architecture (for RTX 3090)
+  set(CMAKE_CUDA_ARCHITECTURES 86)
+  #Set CUDA compiler options to generate position-independent code
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler -fPIC")
+  include_directories(../include)
+  add_library(stp_cuda STATIC stp_cuda.cu)
+  set_target_properties(stp_cuda
+    PROPERTIES CUDA_SEPARABLE_COMPILATION ON
+  )
+  target_compile_features(stp_cuda PUBLIC cxx_std_17)
+endif()
 
 file(GLOB FILENAMES *.cpp)
 
@@ -22,7 +23,9 @@ foreach(filename ${FILENAMES})
   endif()
 endforeach()
 
-target_link_libraries(stp_simulator PUBLIC  stp_cuda)
+if (STP_ENABLE_CUDA)
+  target_link_libraries(stp_simulator PUBLIC stp_cuda)
+endif()
 
 
 
