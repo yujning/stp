@@ -28,16 +28,22 @@ mkdir build
 cd build
 cmake ..
 make
-./test/run_tests
-./example/matrix
+./bin/stp
 ```
 
-The **test** and **examples** directories are compiled in defalut, if you want turn it
-off, please use
+
+use cuda(DSTP_ENABLE_CUDA is set to OFF by default):
 ```bash
-cmake -DSTP_EXAMPLES=OFF -DSTP_TEST=OFF ..
+cmake .. -DSTP_ENABLE_CUDA=ON
+```
+
+sim:
+```bash
+sim -l yourcase.bench
 ```
 
 
-
-
+sim with cuda:
+```bash
+sim -l -c yourcase.bench
+```
