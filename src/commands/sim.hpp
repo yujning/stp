@@ -1,27 +1,15 @@
-/* also: Advanced Logic Synthesis and Optimization tool
- * Copyright (C) 2019- Ningbo University, Ningbo, China */
-
-/**
- * @file imgff.hpp
- *
- * @brief construct a fanout-free implication logic network
- *
- * @author Zhufei Chu
- * @since  0.1
- */
-
 #ifndef SIM_HPP
 #define SIM_HPP
 #include <chrono>
+#include <fstream>
 #include <alice/alice.hpp>
-#include "../include/io/bench_parser.hpp"
-#include "../include/algorithms/stp_circuit.hpp"
-#include "../include/algorithms/normalize.hpp"
+#include "../include/io/lut_parser.hpp"
+#include "../include/io/expr_parser.hpp"
+#include "../include/algorithms/circuit_graph.hpp"
+#include "../include/sim/simulator.hpp"
 #include "../include/algorithms/excute.hpp"
 
 using namespace stp;
-
-
 
 std::string remove_quotes(const std::string& str) 
 {
@@ -33,7 +21,6 @@ std::string remove_quotes(const std::string& str)
     }
     return result;
 }
-
 
 namespace alice
 {
@@ -47,13 +34,13 @@ namespace alice
             add_flag( "--lut, -l",  "using lut network" );
             add_flag( "--aig, -a",  "using aig network" );
             add_flag("--cuda, -c", "using cuda");
+            add_flag("--print, -p", "print result");
             add_option("filename", filename ,"input file name", true);
         }
         
         protected:
         void execute()
         {
-            auto start = std::chrono::high_resolution_clock::now();
             if (filename.size()==0)
             {
                 std::cout << "please specify the file " << std::endl;
@@ -72,45 +59,58 @@ namespace alice
 
             if ( is_set("lut") || is_set("-l") )
             {
-                stp_circuit c;
-                bench_reader parser;
-
-                if ( !parser.parse( ifs, c ) )
+                auto Parser = 0;
+                auto Solver = 0;
+                CircuitGraph graph;
+                LutParser parser;
+                if (!parser.parse(ifs, graph))
                 {
                     std::cout << "can't parse file" << file_path << std::endl;
                     return;
                 }
-                c.update_levels();
-
-                std::cout << "***************************************" << std::endl;
-                circuit_normalize_impl cn( c, is_set( "verbose" ) );
 
                 if (is_set("cuda") || is_set("-c"))
                 {
-                    #ifdef ENABLE_CUDA  
+                    #ifdef ENABLE_CUDA 
+                    _using_CUDA = true;
                     Get_Total_Thread_Num();
-                    std::string m3 = cn.run_str(true);
-                    std::cout << "cuda method\n";
-                    std::cout << m3 << "\n";
+                    simulator sim(graph);
+                    auto start = std::chrono::high_resolution_clock::now();
+                    sim.simulate();
+                    auto end = std::chrono::high_resolution_clock::now();
+                    auto time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+                    //print result
+                    if ( is_set("print") || is_set("-p") )
+                    {
+                        sim.print_simulation_result();
+                    }
+                    std::cout << "time: " << time/1000 << " ms\n"<< std::endl;
                     #else
-                    std::cout << "can't find cuda" << std::endl;
+                        std::cout << "can't find cuda" << std::endl;
                     #endif
+
                 }
                 else
                 {
-                    std::string m3 = cn.run_str(false);
-                    std::cout << "rsult: \n";
-                    std::cout << m3 << "\n";
+                    _using_CUDA = false;
+                    simulator sim(graph);
+                    auto start = std::chrono::high_resolution_clock::now();
+                    sim.simulate();
+                    auto end = std::chrono::high_resolution_clock::now();
+                    auto time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+                    //print result
+                    if ( is_set("print") || is_set("-p") )
+                    {
+                        sim.print_simulation_result();
+                    }
+                    std::cout << "time: " << std::fixed << std::setprecision(3) 
+                    << static_cast<double>(time) / 1000.0 << " ms\n" << std::endl;
                 }
             }
             else
             {
               std::cout << "please specify the network type" << std::endl;
             }
-            auto end = std::chrono::high_resolution_clock::now();
-            auto time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-            std::cout << "time: " << time << " us\n"<< std::endl;
-
         }
         
     private:
@@ -120,3 +120,4 @@ namespace alice
 }
 
 #endif
+

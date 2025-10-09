@@ -28,7 +28,7 @@ include_directories(/usr/local/include/eigen3)
 # Options
 option(TEST "Build tests" OFF)
 
-add_compile_options(-g -O3 -W -Wall -Wextra)
+add_compile_options(-g -O3)
 
 
 # Build tests if enabled

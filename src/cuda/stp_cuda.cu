@@ -33,125 +33,133 @@ void Get_Total_Thread_Num(void)
         cudaDeviceProp deviceProp;
         cudaGetDeviceProperties(&deviceProp, i);
 
-        std::cout << "Device " << i << ": " << deviceProp.name << std::endl;
-        std::cout << "Max threads per block: " << deviceProp.maxThreadsPerBlock << std::endl;
-        std::cout << "Max blocks per grid: " << (int64_t)deviceProp.maxGridSize[0] * deviceProp.maxGridSize[1] * deviceProp.maxGridSize[2] << std::endl;
-        std::cout << "  X : " << deviceProp.maxGridSize[0] << std::endl;
-        std::cout << "  Y : " << deviceProp.maxGridSize[1] << std::endl;
-        std::cout << "  Z : " << deviceProp.maxGridSize[2] << std::endl;
-        std::cout << "Total max threads: " << deviceProp.maxThreadsPerMultiProcessor * deviceProp.multiProcessorCount << std::endl;
-        std::cout << std::endl;
+        //std::cout << "Device " << i << ": " << deviceProp.name << std::endl;
+        //std::cout << "Max threads per block: " << deviceProp.maxThreadsPerBlock << std::endl;
+        //std::cout << "Max blocks per grid: " << (int64_t)deviceProp.maxGridSize[0] * deviceProp.maxGridSize[1] * deviceProp.maxGridSize[2] << std::endl;
+        //std::cout << "  X : " << deviceProp.maxGridSize[0] << std::endl;
+        //std::cout << "  Y : " << deviceProp.maxGridSize[1] << std::endl;
+        //std::cout << "  Z : " << deviceProp.maxGridSize[2] << std::endl;
+        //std::cout << "Total max threads: " << deviceProp.maxThreadsPerMultiProcessor * deviceProp.multiProcessorCount << std::endl;
+        //std::cout << std::endl;
         Total_Thread = deviceProp.maxThreadsPerMultiProcessor * deviceProp.multiProcessorCount;
     }    
 }
 
+extern "C"
+CUDA_DATA  Memcpy_To_Device(std::vector<stp_data>& A)
+{
+    CUDA_DATA C;
+    C._row = A[0];
+    C._col = A.size() - 1;
+
+    //compute space 
+    size_t size_A = (A.size() - 1) * sizeof(stp_data);
+
+    //allocate memory
+    cudaError_t  errC = cudaMalloc((void **)&C.d_Vec, size_A);
+    if (errC != cudaSuccess) 
+    {
+        std::cerr << "Error allocating memory for In_KR_Matrix d_C: " << cudaGetErrorString(errC) << std::endl;
+    }
+
+    //Copy parameters
+    cudaMemcpy(C.d_Vec, A.data() + 1, size_A, cudaMemcpyHostToDevice);
+
+    return C;
+}
 
 
+extern "C"
+//release GPU memory
+bool Free_Device_Memory(CUDA_DATA& C)
+{
+    cudaError_t err = cudaFree(C.d_Vec);
+    if (err != cudaSuccess) 
+    {
+        std::cerr << "Error freeing memory for In_KR_Matrix d_C: " << cudaGetErrorString(err) << std::endl;
+        return false;
+    }
+    return true;
+}
+
+
+extern "C"
+std::vector<stp_data> Memcpy_To_Host(CUDA_DATA& C)
+{
+    std::vector<stp_data> A(C._col + 1);
+    A[0] = C._row;
+    cudaMemcpy(A.data() + 1, C.d_Vec, (C._col) * sizeof(stp_data), cudaMemcpyDeviceToHost);
+    cudaFree(C.d_Vec);
+
+    return A;
+}
 
 //In_KR_Matrix_Kernel     
-__global__ void In_KR_Matrix_Kernel(int32_t sub_dim, int32_t idx_offset, int32_t *A, int32_t A_val_len, int32_t *C, int32_t C_val_len)
+__global__ void In_KR_Matrix_Kernel(int32_t sub_dim, int32_t idx_offset, stp_data *A, stp_data A_row, stp_data A_val_len, stp_data *C, stp_data C_val_len)
 {
-    int32_t ix = blockIdx.x * 1024 + threadIdx.x;
+    stp_data ix = blockIdx.x * 1024 + threadIdx.x;
     //index
-    int32_t idx = ix + idx_offset;
+    stp_data idx = ix + idx_offset;
 
-    int32_t x_code = idx / A_val_len;
+    stp_data x_code = idx / A_val_len;
 
-    int32_t y_code = idx % A_val_len;
+    stp_data y_code = idx % A_val_len;
 
     //boundary check  
     if(idx < C_val_len)
     {    
         //XP+Y
-        C[idx] = x_code * A[0] + A[y_code + 1]; 
+        C[idx] = x_code * A_row + A[y_code]; 
     }
 }
 
 
 extern "C"
-//In_KR_Matrix
-std::vector<int32_t> cuda_In_KR_Matrix(int32_t dim, std::vector<int32_t>& A)
+CUDA_DATA my_cuda_In_KR_Matrix(int32_t dim, CUDA_DATA& A)
 {
     //Get the dimensions of matrix A
-    int32_t A_row = A[0];
-    int32_t A_col = A.size() - 1;
+    stp_data A_row = A._row;
+    stp_data A_col = A._col;
 
     //Calculate the size of result matrix
-    int32_t C_len = dim * A_col + 1;
+    stp_data C_len = dim * A_col;
 
-    //Define the result matrix
-    std::vector<int32_t> C(C_len);
+    CUDA_DATA C; 
+    C._row = A_row * dim;
+    C._col = A_col * dim;
 
     //Assign the number of rows of result matrix
-    C[0] = A_row * dim;
-
-    if (C_len <= Total_Thread / 5)
-    {
-        for (int32_t i = 0; i < dim; i++)
-        {
-            int32_t temp = i * A_row;
-            int32_t idx = i * A_col + 1;
-            for (int32_t j = 0; j < A_col; j++)
-            {
-                C[idx + j] = temp + A[j + 1];
-            }
-        }
-        return C;
-    }
-
-    int32_t *d_A,*d_C;
+    stp_data *d_C;
 
     //compute space 
-    size_t size_A = A.size() * sizeof(int32_t);
-    size_t size_C = (C_len - 1) * sizeof(int32_t);
+    size_t size_C = C_len * sizeof(stp_data);
 
     //allocate memory
-    cudaError_t errA, errC;
-    errA = cudaMalloc((void **)&d_A, size_A);
-    //Error checking
-    if (errA != cudaSuccess) 
-    {
-        std::cerr << "Error allocating memory for In_KR_Matrix d_A: " << cudaGetErrorString(errA) << std::endl;
+    cudaError_t errC;
 
-        std::vector<int32_t> Temp;
-        //Set the size to improve the speed of computation
-        Temp.resize(1);
-        Temp[0] = -1;
-
-        return Temp;
-    }
     errC = cudaMalloc((void **)&d_C, size_C);
     if (errC != cudaSuccess) 
     {
         std::cerr << "Error allocating memory for In_KR_Matrix d_C: " << cudaGetErrorString(errC) << std::endl;
-        std::vector<int32_t> Temp;
-        //Set the size to improve the speed of computation
-        Temp.resize(1);
-        Temp[0] = -1;
-
-        return Temp;
     }
-
-    //Copy parameters
-    cudaMemcpy(d_A, A.data(), size_A, cudaMemcpyHostToDevice);
 
     //Calculate the block size (maximum 1024)
     dim3 threadsPerBlock(1024, 1);
 
     //Can be done in one go (with each element of C as a thread)
-    if((C_len - 1) <=Total_Thread)
+    if((C_len) <=Total_Thread)
     {
         //Calculate the grid size (for large scale)
-        dim3 numBlocks0(( C_len - 1 + 1024 -1 ) / 1024, 1);
+        dim3 numBlocks0(( C_len + 1024 -1 ) / 1024, 1);
 
         //Launch GPU
-        In_KR_Matrix_Kernel<<<numBlocks0, threadsPerBlock>>>(dim, 0, d_A, A_col , d_C, C_len - 1);
+        In_KR_Matrix_Kernel<<<numBlocks0, threadsPerBlock>>>(dim, 0, A.d_Vec, A_row, A_col , d_C, C_len);
         cudaDeviceSynchronize(); //Wait for the kernel to complete
     }
     //Divide into blocks (by column)
     else
     {
-        int32_t remain_num = C_len - 1; //remaining unassigned columns in C
+        int32_t remain_num = C_len; //remaining unassigned columns in C
         int32_t idx_offset = 0;  //Thread offset
 
         while(remain_num)
@@ -162,7 +170,7 @@ std::vector<int32_t> cuda_In_KR_Matrix(int32_t dim, std::vector<int32_t>& A)
                 //Calculate the grid size (for large scale)
                 dim3 numBlocks(( remain_num + 1024 -1 ) / 1024, 1);
 
-                In_KR_Matrix_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, d_A, A_col, d_C, C_len - 1); 
+                In_KR_Matrix_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, A.d_Vec, A_row, A_col, d_C, C_len); 
                 cudaDeviceSynchronize(); //Wait for the kernel to complete
                 //Calculate the thread offset
                 idx_offset += remain_num;
@@ -174,7 +182,7 @@ std::vector<int32_t> cuda_In_KR_Matrix(int32_t dim, std::vector<int32_t>& A)
                 //Calculate the grid size (for large scale)
                 dim3 numBlocks(( Total_Thread + 1024 -1 ) / 1024, 1);
 
-                In_KR_Matrix_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, d_A, A_col, d_C, C_len - 1);  
+                In_KR_Matrix_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, A.d_Vec, A_row, A_col, d_C, C_len);  
                 cudaDeviceSynchronize(); //Wait for the kernel to complete
 
                 //Calculate thread offset
@@ -185,30 +193,33 @@ std::vector<int32_t> cuda_In_KR_Matrix(int32_t dim, std::vector<int32_t>& A)
 
     }
 
-    //Segmented copy with pointer offset
-    cudaMemcpy(C.data() + 1, d_C, size_C, cudaMemcpyDeviceToHost);
-
     //Free resources
-    cudaFree(d_A);
-    cudaFree(d_C);
+    // if(A_col>20)
+    // {
+    //     cudaFree(A.d_Vec);
+    // }
+    cudaFree(A.d_Vec);
+    C.d_Vec = d_C;
 
     return C;
 }
 
 
 
+
+
 //Matrix_KR_In_Kernel
-__global__ void Matrix_KR_In_Kernel(int32_t dim, int32_t idx_offset, int32_t *A, int32_t A_val_len, int32_t *C, int32_t C_val_len)
+__global__ void Matrix_KR_In_Kernel(int32_t dim, int32_t idx_offset, stp_data *A, stp_data A_val_len, stp_data *C, stp_data C_val_len)
 {
-    int32_t ix = blockIdx.x * 1024 + threadIdx.x;
+    stp_data ix = blockIdx.x * 1024 + threadIdx.x;
     //index
-    int32_t idx = ix + idx_offset;
+    stp_data idx = ix + idx_offset;
 
     //calculate x_code
-    int32_t x_code = idx / dim;
+    stp_data x_code = idx / dim;
 
     //calculate y_code
-    int32_t y_code = idx % dim;
+    stp_data y_code = idx % dim;
 
     //boundary check
     if(idx < C_val_len)
@@ -219,71 +230,34 @@ __global__ void Matrix_KR_In_Kernel(int32_t dim, int32_t idx_offset, int32_t *A,
     
 }
 
+extern "C"
 //Matrix_KR_In
-std::vector<int32_t> cuda_Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
+CUDA_DATA my_cuda_Matrix_KR_In(int32_t dim,  CUDA_DATA& A)
 {
     //get dimensions of matrix A
-    int32_t A_row = A[0];
-    int32_t A_col = A.size() - 1;
+    stp_data A_row = A._row;
+    stp_data A_col = A._col;
 
     //calculate size of result matrix
-    //int32_t C_len = A_row * dim + 1;
-    int32_t C_len = A_col * dim + 1;
+    stp_data C_len = A_col * dim;
 
-    std::vector<int32_t> C(C_len);
+    CUDA_DATA C;
+    C._row = A_row * dim;
+    C._col = A_col * dim;
 
-    //assign number of rows of result matrix
-    C[0] = A_row * dim;
 
-    if (C_len <= Total_Thread / 5)
-    {
-        for (int32_t i = 0; i < A_col; i++)
-        {
-            int32_t temp = A[i + 1] * dim;
-            int32_t idx = i * dim + 1;
-            for (int32_t j = 0; j < dim; j++)
-            {
-                C[idx + j] = temp + j;
-            }
-        }
-        return C;
-
-    }
-
-    int32_t *d_A,*d_C;
+    stp_data *d_C;
     //compute space
-    size_t size_A = A.size() * sizeof(int32_t);
-    size_t size_C = ( C_len - 1 ) * sizeof(int32_t);
+    size_t size_C = C_len * sizeof(stp_data);
 
     //allocate memory
-    cudaError_t errA, errC;
+    cudaError_t errC;
 
-    errA = cudaMalloc((void **)&d_A, size_A);
-    //error checking
-    if (errA != cudaSuccess) 
-    {
-        std::cerr << "Error allocating memory for Matrix_KR_In d_A: " << cudaGetErrorString(errA) << std::endl;
-        std::vector<int32_t> Temp;
-        //set size to improve computation speed
-        Temp.resize(1);
-        Temp[0] = -1;
-
-        return Temp;
-    }
     errC = cudaMalloc((void **)&d_C, size_C);
     if (errC != cudaSuccess) 
     {
         std::cerr << "Error allocating memory for Matrix_KR_In d_C: " << cudaGetErrorString(errC) << std::endl;
-        std::vector<int32_t> Temp;
-        //set size to improve computation speed
-        Temp.resize(1);
-        Temp[0] = -1;
-
-        return Temp;
     }
-
-    //copy parameters
-    cudaMemcpy(d_A, A.data(), size_A, cudaMemcpyHostToDevice);
 
     //calculate block size (maximum 1024)
     dim3 threadsPerBlock(1024, 1);
@@ -292,15 +266,15 @@ std::vector<int32_t> cuda_Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
     if((C_len - 1) <= Total_Thread)
     {
         //calculate grid size (for large scale)
-        dim3 numBlocks(( C_len - 1 + 1024 -1 ) / 1024, 1);
+        dim3 numBlocks(( C_len + 1024 -1 ) / 1024, 1);
 
-        Matrix_KR_In_Kernel<<<numBlocks, threadsPerBlock>>>(dim, 0, d_A + 1, A_col, d_C, C_len - 1); 
+        Matrix_KR_In_Kernel<<<numBlocks, threadsPerBlock>>>(dim, 0, A.d_Vec, A_col, d_C, C_len); 
         cudaDeviceSynchronize(); //wait for the kernel to complete
     }
     //divide into blocks (by column)
     else
     {
-        int32_t remain_num = C_len - 1; //C remaining unassigned columns
+        int32_t remain_num = C_len; //C remaining unassigned columns
         int32_t idx_offset = 0;  //thread offset
 
         while(remain_num)
@@ -311,7 +285,7 @@ std::vector<int32_t> cuda_Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
                 //calculate grid size (for large scale) 
                 dim3 numBlocks(( remain_num + 1024 -1 ) / 1024, 1);
 
-                Matrix_KR_In_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, d_A + 1, A_col, d_C, C_len - 1);  
+                Matrix_KR_In_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, A.d_Vec, A_col, d_C, C_len);  
                 cudaDeviceSynchronize(); //wait for the kernel to complete
                 //calculate thread offset
                 idx_offset += remain_num;
@@ -323,7 +297,7 @@ std::vector<int32_t> cuda_Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
                 //calculate grid size (for large scale)
                 dim3 numBlocks(( Total_Thread + 1024 -1 ) / 1024, 1);
 
-                Matrix_KR_In_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, d_A + 1, A_col, d_C, C_len - 1);  
+                Matrix_KR_In_Kernel<<<numBlocks, threadsPerBlock>>>(dim, idx_offset, A.d_Vec , A_col, d_C, C_len);  
                 cudaDeviceSynchronize(); //wait for the kernel to complete
 
                 //calculate thread offset
@@ -333,19 +307,22 @@ std::vector<int32_t> cuda_Matrix_KR_In(int32_t dim,  std::vector<int32_t>& A)
         }
     }
 
-    //segmented copy with pointer offset
-    cudaMemcpy(C.data() + 1, d_C, size_C, cudaMemcpyDeviceToHost);
-
     //free resources
-    cudaFree(d_A);
-    cudaFree(d_C);
+    // if(A_col>20)
+    // {
+    //     cudaFree(A.d_Vec);
+    // }
+    cudaFree(A.d_Vec);
+    
+    C.d_Vec = d_C;
 
     return C;
 }         
 
 
+
 //Matrix_Multipiy_Kernel
-__global__ void Matrix_Multipiy_Kernel(int32_t idx_offset, int32_t *A, int32_t A_val_len, int32_t *B, int32_t B_val_len, int32_t *C, int32_t C_val_len, int32_t t)
+__global__ void Matrix_Multipiy_Kernel(int32_t idx_offset, stp_data *A, int32_t A_val_len, stp_data *B, int32_t B_val_len, stp_data *C, int32_t C_val_len, int32_t t)
 {
     int32_t ix = blockIdx.x * 1024 + threadIdx.x;
     //index
@@ -360,111 +337,63 @@ __global__ void Matrix_Multipiy_Kernel(int32_t idx_offset, int32_t *A, int32_t A
     //boundary check
     if(idx < C_val_len )
     {
-
         //result
-        C[idx] = A[ B[ y_code + 1 ] * t + x_code + 1];
+        C[idx] = A[ B[ y_code ] * t + x_code];
     }
 }
 
+
+
 extern "C"
-//my_semi_tensor_product
-std::vector<int32_t> cuda_semi_tensor_product(std::vector<int32_t>& A, std::vector<int32_t>& B)
+//my_semi_tensor_product 
+CUDA_DATA my_cuda_semi_tensor_product(CUDA_DATA& A, CUDA_DATA& B)
 {
     //get dimensions of matrix A and B
-    int32_t A_row = A[0];
-    int32_t A_col = A.size() - 1;
-    int32_t B_row = B[0];
-    int32_t B_col = B.size() - 1;
+    int32_t A_row = A._row;
+    int32_t A_col = A._col;
+    int32_t B_row = B._row;
+    int32_t B_col = B._col;
 
     if(A_col % B_row == 0)
     {
+        CUDA_DATA C;
+        C._row = A_row;
+
         //calculate size of result matrix
-        int32_t C_len = (int64_t)A_col * B_col / B_row + 1;
+        int32_t C_len = (int64_t)A_col * B_col / B_row ;
 
-        if (C_len <= Total_Thread / 5)
-        {
-            std::vector<int32_t> C(C_len);
-
-            C[0] = A_row;
-            int32_t times = A_col / B_row;
-
-            for (int32_t i = 0; i < B_col; i++)
-            {
-                //t = n/p
-                for(int32_t j = 0; j < times; j++)
-                {
-                    C[times * i + j + 1] = A[1 + B[i+1] * times + j] ;
-                }
-            }
-
-            return C;
-        }
+        C._col = C_len;
 
         //caculate size of result matrix
-        size_t size_A = A.size() * sizeof(int32_t);
-        size_t size_B = B.size() * sizeof(int32_t);
-        size_t size_C = (C_len - 1) * sizeof(int32_t);       
 
-        int32_t *d_A,*d_B,*d_C;
+        size_t size_C = C_len * sizeof(stp_data);       
+
+        stp_data *d_C;
 
         //allocate memory
-        cudaError_t errA, errB, errC;
-        errA = cudaMalloc((void **)&d_A, size_A);
+        cudaError_t errC;
 
-        //error checking
-        if (errA != cudaSuccess) 
-        {
-            std::cerr << "Error allocating memory for my_semi_tensor_product d_A: " << cudaGetErrorString(errA) << std::endl;
-            std::vector<int32_t> Temp;
-            //set size to improve computation speed
-            Temp.resize(1);
-            Temp[0] = -1;
-
-            return Temp;
-        }
-        errB = cudaMalloc((void **)&d_B, size_B);
-        //error checking
-        if (errB != cudaSuccess) 
-        {
-            std::cerr << "Error allocating memory for my_semi_tensor_product d_B: " << cudaGetErrorString(errB) << std::endl;
-            std::vector<int32_t> Temp;
-            //set size to improve computation speed
-            Temp.resize(1);
-            Temp[0] = -1;
-
-            return Temp;
-        }
         errC = cudaMalloc((void **)&d_C, size_C);
         if (errC != cudaSuccess) 
         {
             std::cerr << "Error allocating memory for my_semi_tensor_product d_C: " << cudaGetErrorString(errC) << std::endl;
-            std::vector<int32_t> Temp;
-            //set size to improve computation speed
-            Temp.resize(1);
-            Temp[0] = -1;
-
-            return Temp;
         }
-
-        //copy parameters
-        cudaMemcpy(d_A, A.data(), size_A, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_B, B.data(), size_B, cudaMemcpyHostToDevice);
 
         //calculate block size (maximum 1024)
         dim3 threadsPerBlock(1024, 1);
 
-        if((C_len - 1) <= Total_Thread)
+        if(C_len <= Total_Thread)
         {
             //calculate grid size (for large scale)
-            dim3 numBlocks((C_len - 1 + 1024 - 2 ) / 1024, 1);
-            Matrix_Multipiy_Kernel<<<numBlocks, threadsPerBlock>>>(0, d_A, A_col, d_B, B_col, d_C, C_len - 1, A_col / B_row);
+            dim3 numBlocks((C_len + 1024 - 1 ) / 1024, 1);
+            Matrix_Multipiy_Kernel<<<numBlocks, threadsPerBlock>>>(0, A.d_Vec, A._col, B.d_Vec, B._col, d_C, C_len, A_col / B_row);
 
             //wait for all threads to complete
             cudaDeviceSynchronize();          
         }
         else
         {
-            int32_t remain_num = C_len - 1; //remaining unassigned columns in C
+            int32_t remain_num = C_len; //remaining unassigned columns in C
             int32_t idx_offset = 0;  //thread offset
 
             while(remain_num)
@@ -475,7 +404,7 @@ std::vector<int32_t> cuda_semi_tensor_product(std::vector<int32_t>& A, std::vect
                     //calculate grid size (for large scale) 
                     dim3 numBlocks(( remain_num + 1024 -1 ) / 1024, 1);
 
-                    Matrix_Multipiy_Kernel<<<numBlocks, threadsPerBlock>>>(idx_offset, d_A, A_col, d_B, B_col, d_C, C_len - 1, A_col / B_row);
+                    Matrix_Multipiy_Kernel<<<numBlocks, threadsPerBlock>>>(idx_offset, A.d_Vec, A._col,B.d_Vec, B._col, d_C, C_len, A_col / B_row);
                     cudaDeviceSynchronize(); //wait for the kernel to complete
                     //calculate thread offset
                     idx_offset += remain_num;
@@ -487,38 +416,39 @@ std::vector<int32_t> cuda_semi_tensor_product(std::vector<int32_t>& A, std::vect
                     //calculate grid size (for large scale)
                     dim3 numBlocks(( Total_Thread + 1024 -1 ) / 1024, 1);
 
-                    Matrix_Multipiy_Kernel<<<numBlocks, threadsPerBlock>>>(idx_offset, d_A, A_col, d_B, B_col, d_C, C_len - 1, A_col / B_row);
+                    Matrix_Multipiy_Kernel<<<numBlocks, threadsPerBlock>>>(idx_offset, A.d_Vec, A_col, B.d_Vec, B_col, d_C, C_len, A_col / B_row);
                     cudaDeviceSynchronize(); //wait for the kernel to complete
                     //calculate thread offset
                     //idx_offset += Total_Thread;
                     cudaDeviceSynchronize(); //wait for the kernel to complete
-                    //计算线程偏移
+                    //calculate thread offset
                     idx_offset += Total_Thread;
                     remain_num -= Total_Thread; //exit the loop               
                 }
             }            
         }
 
-        std::vector<int32_t> C;
-        //set size to improve computation speed
-        C.resize(C_len);
-
-        //assign result matrix row number
-        C[0] = A_row;
-
-        //segmented copy with pointer offset
-        cudaMemcpy(C.data() + 1, d_C, size_C, cudaMemcpyDeviceToHost);
         //free resources
-        cudaFree(d_A);
-        cudaFree(d_B);
-        cudaFree(d_C);
+        // if(A_col>20)
+        // {
+        //     cudaFree(A.d_Vec);
+        // }
+        // if(B_col>20)
+        // {
+        //     cudaFree(B.d_Vec);
+        // }
+
+
+        cudaFree(A.d_Vec);
+        cudaFree(B.d_Vec);
+        C.d_Vec = d_C;
 
         return C;
     }
     else if(B_row % A_col == 0)
     {
-        std::vector<int32_t> temp = cuda_Matrix_KR_In(B_row / A_col, A);
-        std::vector<int32_t> C = cuda_semi_tensor_product(temp, B);
+        CUDA_DATA temp = my_cuda_Matrix_KR_In(B_row / A_col, A);
+        CUDA_DATA C = my_cuda_semi_tensor_product(temp, B);
 
         return C;
     }
@@ -526,12 +456,6 @@ std::vector<int32_t> cuda_semi_tensor_product(std::vector<int32_t>& A, std::vect
     {
         //error
         std::cout << "Error" << std::endl;
-        std::vector<int32_t> C;
-        //set size to improve computation speed
-        C.resize(1);
-        C[0] = -1;
-
-        return C;
     }
     
 }
@@ -539,24 +463,7 @@ std::vector<int32_t> cuda_semi_tensor_product(std::vector<int32_t>& A, std::vect
 
 
 
-extern "C"
-//my_chain_multiply_by_multi_thread                                                
-std::vector<int32_t> cuda_chain_multiply_by_multi_thread( std::vector<std::vector<int32_t>>& mc, bool verbose)
-{
-  std::vector<int32_t> result=mc[0];
 
-  if(mc.size()<2)
-  {
-    return result;
-  }
-
-  for (size_t i = 1; i < mc.size(); i++ )
-  {
-    result = cuda_semi_tensor_product(result,mc[i]);
-
-  }
-  return result;
-}
 
 
 
