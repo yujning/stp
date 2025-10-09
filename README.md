@@ -31,19 +31,13 @@ make
 ./bin/stp
 ```
 
-
-use cuda(DSTP_ENABLE_CUDA is set to OFF by default):
-```bash
-cmake .. -DSTP_ENABLE_CUDA=ON
-```
-
 sim:
 ```bash
 sim -l yourcase.bench
 ```
 
 
-sim with cuda:
+print result:
 ```bash
-sim -l -c yourcase.bench
+sim -l -p yourcase.bench
 ```

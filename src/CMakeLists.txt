@@ -40,5 +40,6 @@ message(STATUS "Eigen3 found at: ${EIGEN3_INCLUDE_DIRS}")
   target_include_directories(stp INTERFACE ${EIGEN3_INCLUDE_DIRS})
 endif()
 
-
+find_package(OpenMP REQUIRED)
+target_link_libraries(stp OpenMP::OpenMP_CXX)
 target_link_libraries(stp  fmt Eigen3::Eigen pthread stp_lib)
