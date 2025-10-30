@@ -73,7 +73,7 @@ inline std::vector<stp_data> generate_Mr_vec(const stp_data &k)
 // }
 
 
-inline std::vector<stp_data> In_KR_Vec(stp_data dim, const std::vector<stp_data> &A)
+inline std::vector<stp_data> In_KR_Vec(stp_data dim, const std::vector<stp_data> &A)//Idim​⊗A
 {
     // Get the dimensions of matrix A
     stp_data A_row = A[0];
@@ -101,7 +101,7 @@ inline std::vector<stp_data> In_KR_Vec(stp_data dim, const std::vector<stp_data>
     return C;
 }
 
-std::vector<stp_data> Vec_KR_In(stp_data dim, const std::vector<stp_data> &A)
+std::vector<stp_data> Vec_KR_In(stp_data dim, const std::vector<stp_data> &A)//A⊗Idim​.
 {
     // get dimensions of matrix A
     stp_data A_row = A[0];
