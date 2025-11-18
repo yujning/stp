@@ -6,9 +6,13 @@
 #include <cmath>
 #include <bitset>
 #include <alice/alice.hpp>
+#include <kitty/constructors.hpp>
+#include <kitty/dynamic_truth_table.hpp>
+#include <kitty/print.hpp>
 
-// 引入算法文件
+// 引入算法
 #include "../include/algorithms/stp_dsd.hpp"
+#include "../include/algorithms/reorder.hpp"   // all_reorders_char(raw)
 
 namespace alice
 {
@@ -16,76 +20,97 @@ namespace alice
     {
     public:
         explicit dsd_command(const environment::ptr &env)
-            : command(env, "Run STP decomposition on a hexadecimal input")
+            : command(env, "Run STP decomposition / raw reorder")
         {
-            add_option("-f, --factor", hex_input, "hexadecimal number (must produce 2^n-length binary)");
+            add_option("-f, --factor", hex_input,
+                       "hexadecimal number (must map to 2^n bits)");
+
+            add_option("-x, --raw", raw_input,
+                       "raw truth-table with don't care (x), length must be 2^n");
         }
 
     protected:
-        void execute() override
+  void execute() override
+{
+    using clk = std::chrono::high_resolution_clock;
+
+    bool use_raw = is_set("raw");
+    bool use_hex = is_set("factor");
+
+    if (use_raw && use_hex)
+    {
+        std::cout << "❌ Options -f and -x cannot be used together.\n";
+        return;
+    }
+
+    // ------------ RAW MODE ------------
+    if (use_raw)
+    {
+        std::string raw = raw_input;
+
+        if (!is_power_of_two(raw.size()))
         {
-            if (hex_input.empty())
-            {
-                std::cout << "Please specify a hexadecimal number after -f (e.g. -f 0x10)" << std::endl;
-                return;
-            }
-
-            // 1️⃣ 将输入的16进制转为十进制
-            unsigned long value = 0;
-            try
-            {
-                value = std::stoul(hex_input, nullptr, 16);
-            }
-            catch (...)
-            {
-                std::cout << "Invalid hexadecimal input: " << hex_input << std::endl;
-                return;
-            }
-
-            if (value == 0)
-            {
-                std::cout << "0 is not valid input." << std::endl;
-                return;
-            }
-
-            // 2️⃣ 转为二进制字符串
-            std::string binary;
-            {
-                unsigned long temp = value;
-                while (temp > 0)
-                {
-                    binary.insert(binary.begin(), (temp & 1) ? '1' : '0');
-                    temp >>= 1;
-                }
-            }
-
-            // 3️⃣ 检查长度是否为2的幂
-            size_t len = binary.size();
-            bool is_pow2 = (len & (len - 1)) == 0;
-            if (!is_pow2)
-            {
-                std::cout << "❌ Error: binary length (" << len << ") is not a power of 2." << std::endl;
-                std::cout << "   Please input a hex value whose binary length = 2^n (e.g. 0x8 -> 1000, len=4)." << std::endl;
-                return;
-            }
-
-            // 若二进制长度小于2的幂，补齐到完整位宽（例如 3→4）
-            size_t next_pow2 = 1;
-            while (next_pow2 < len) next_pow2 <<= 1;
-            if (next_pow2 != len)
-            {
-                binary = std::string(next_pow2 - len, '0') + binary;
-            }
-
-            std::cout << "✅ Hex " << hex_input << " => binary " << binary 
-                      << " (length = " << binary.size() << ")" << std::endl;
-
-            // 4️⃣ 调用 STP 不相交分解算法
-            all_reorders(binary);
+            std::cout << "❌ Error: length (" << raw.size() << ") is not power of 2\n";
+            return;
         }
+
+        std::cout << "➡ Raw truth-table mode (-x)\n";
+        std::cout << "Input = " << raw << "\n";
+
+        auto t1 = clk::now();
+        all_reorders_char(raw);
+        auto t2 = clk::now();
+
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        std::cout << "⏱ RAW decomposition time = " << us << " us\n";
+
+        return;
+    }
+
+    // ------------ HEX MODE ------------
+    if (!use_hex)
+    {
+        std::cout << "❌ Please use -f <hex> or -x <raw>\n";
+        return;
+    }
+
+    std::string hex = hex_input;
+
+    if (hex.rfind("0x",0)==0 || hex.rfind("0X",0)==0)
+        hex = hex.substr(2);
+
+    unsigned bit_count = hex.size() * 4;
+    unsigned num_vars = 0;
+    while ((1u << num_vars) < bit_count) num_vars++;
+
+    if ((1u << num_vars) != bit_count)
+    {
+        std::cout << "❌ Hex length is not 2^n bits\n";
+        return;
+    }
+
+    kitty::dynamic_truth_table tt(num_vars);
+    kitty::create_from_hex_string(tt, hex);
+
+    std::ostringstream oss;
+    kitty::print_binary(tt, oss);
+    std::string binary = oss.str();
+
+    std::cout << "📘 Hex " << hex << " => binary " << binary
+              << " (len = " << binary.size() << " vars = " << num_vars << ")\n";
+
+    // 计时
+    auto t1 = clk::now();
+    all_reorders(binary);
+    auto t2 = clk::now();
+
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    std::cout << "⏱ DSD execution time = " << us << " us\n";
+}
 
     private:
         std::string hex_input{};
+        std::string raw_input{};
     };
 
     ALICE_ADD_COMMAND(dsd, "STP")
