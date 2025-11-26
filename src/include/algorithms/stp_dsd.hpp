@@ -239,10 +239,10 @@ static bool factor_once_with_reorder_01(
             int cid = theorem33_case_id(reordered, s);
             if(cid!=0){
                 // ---------- 打印重排命中 ----------
-                cout << "\n===== 重排命中：s="<<s<<" 情形("<<cid<<") =====\n";
-                cout << "Λ = { ";
-                for(int j : Lambda) cout<<j<<" ";
-                cout << "}  => reordered: " << reordered << "\n";
+                // cout << "\n===== 重排命中：s="<<s<<" 情形("<<cid<<") =====\n";
+                // cout << "Λ = { ";
+                // for(int j : Lambda) cout<<j<<" ";
+                // cout << "}  => reordered: " << reordered << "\n";
 
                 // ---------- 分块 ----------
                 int bl = 1<<s;
@@ -251,10 +251,10 @@ static bool factor_once_with_reorder_01(
                 for(int i=0;i<nb;i++)
                     blocks01[i] = reordered.substr(i*bl, bl);
 
-                cout << "\n===== 命中：s="<<s<<"，块长="<<bl<<"，块数="<<nb<<" =====\n";
-                cout << "分块：";
-                for(auto& b:blocks01) cout<<"["<<to12(b)<<"]";
-                cout << "\n=> 情形("<<cid<<")："<<case_note(cid)<<"\n\n";
+               // cout << "\n===== 命中：s="<<s<<"，块长="<<bl<<"，块数="<<nb<<" =====\n";
+                //cout << "分块：";
+                //for(auto& b:blocks01) cout<<"["<<to12(b)<<"]";
+                //cout << "\n=> 情形("<<cid<<")："<<case_note(cid)<<"\n\n";
 
                 // ---------- 按 case 选 S0,S1 ----------
                 bool has11=false, has22=false;
