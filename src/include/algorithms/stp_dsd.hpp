@@ -16,7 +16,7 @@ struct DSDNode {
 
 static vector<DSDNode> NODE_LIST;
 static int NODE_ID = 1;
-
+static int STEP_ID = 1;     // 分解步骤编号：1,2,3,...
 
 // =============================
 // 工具函数
@@ -61,14 +61,25 @@ static void indent(int d)
     while(d--) cout<<"   ";
 }
 
+static string case_note(int cid)
+{
+    switch(cid){
+        case 1: return "两个常量块（如全0与全1）";
+        case 2: return "一种常量块 + 一种非常量块";
+        case 3: return "只有一种非常量块";
+        case 4: return "两种非常量块且互补";
+        case 5: return "只有一种常量块（函数恒定）";
+        default: return "未知";
+    }
+}
 
 // =============================
-// 通用模板分解
+// 通用模板分解：给定 blocks01 + S0,S1
 // =============================
 struct TemplateResult {
     string MF;
-    string Mphi;
-    string Mpsi;
+    string Mphi;   // 标签串：每位 '1' 或 '2'
+    string Mpsi;   // 真实 12 域真值表
 };
 
 static TemplateResult run_case_once(
@@ -131,7 +142,7 @@ static TemplateResult run_case_once(
         Mpsi = W[pick];
     }
 
-    // ----------------- 求 MΦ -----------------
+    // ----------------- 求 MΦ 标签 -----------------
     string exp0 = mul_ui(S0, Mpsi);
     string exp1 = mul_ui(S1, Mpsi);
     string Mphi; Mphi.reserve(m);
@@ -144,9 +155,8 @@ static TemplateResult run_case_once(
     return {MF, Mphi, Mpsi};
 }
 
-
 // =============================
-// 创建节点
+// 创建节点 + 小 LUT 叶子结构
 // =============================
 static int new_node(const string& func, const vector<int>& child)
 {
@@ -155,157 +165,192 @@ static int new_node(const string& func, const vector<int>& child)
     return id;
 }
 
-
-// =============================
-// 构造小 LUT 的“叶子结构”
-// 长度 <=4 时不直接当叶，而是再挂一层输入节点：
-//  len==2:  F -> F(var)
-//  len==4:  F -> F(varL, varR)
-// =============================
-static int build_small_tree(const string& f12)
+// 长度 ≤4：构造 2-LUT 叶子结构
+static int build_small_tree_from01(const string& f01)
 {
+    string f12 = to12(f01);
     int len = f12.size();
 
     if(len == 2){
-        // 建一个输入节点（真值表随便，标个 "in" 就行）
-        int in = new_node("in", {});         // 最底层叶子
-        int op = new_node(f12, {in});        // 一元结点，如 12(in) 或 21(in)
-        return op;
+        int in = new_node("in", {});
+        return new_node(f12, {in});
     }
     else if(len == 4){
-        int inL = new_node("in", {});        // 左输入
-        int inR = new_node("in", {});        // 右输入
-        int op  = new_node(f12, {inL, inR}); // 二元结点，如 1222(inL, inR)
-        return op;
+        int inL = new_node("in", {});
+        int inR = new_node("in", {});
+        return new_node(f12, {inL, inR});
     }
-    else{
-        // 理论上不会来这里，保险起见
-        return new_node(f12, {});
-    }
+    // 理论上不会进来
+    return new_node(f12, {});
 }
 
-
 // =============================
-// 递归分解（长度≤4 用 build_small_tree）
+// 单步：对一个 01 串做 “重排 + case + 模板”
+// 输入：binary01（当前要分解的函数，01 域）
+// 输出：MF12（4位12串），phi01, psi01（作为下一轮的 01 域真值表）
+// 返回：是否成功分解（false = 无法按定理3.3分解）
 // =============================
-static int decompose(const string& f12, int depth=0)
+static bool factor_once_with_reorder_01(
+    const string& binary01,
+    int depth,
+    string& MF12,
+    string& phi01,
+    string& psi01)
 {
-    int len = f12.size();
-
-    // ----------- 小 LUT：长度 ≤ 4 -----------
-    if(len <= 4){
-        // 不再往下做定理 3.3 分解，直接挂输入叶节点
-        return build_small_tree(f12);
-    }
-
-    string f01 = to01(f12);
-    if(!is_power_of_two(f01.size())){
-        return build_small_tree(f12);
-    }
+    int len = binary01.size();
+    if(!is_power_of_two(len) || len <= 4) return false;
 
     int n = log2(len);
     int r = n/2;
 
-    // 尝试所有 s
-    for(int s=1;s<=r;s++){
-        int cid = theorem33_case_id(f01, s);
-        if(cid==0) continue;
+    vector<stp_data> Mf = binary_to_vec(binary01);
 
-        int bl = 1<<s;
-        int nb = len/bl;
+    for(int s=1; s<=r; ++s)
+    {
+        vector<bool> v(n);
+        fill(v.begin(), v.begin()+s, true);
 
-        vector<string> blocks01(nb);
-        for(int i=0;i<nb;i++)
-            blocks01[i] = f01.substr(i*bl, bl);
+        do{
+            // Λ
+            vector<int> Lambda;
+            for(int i=0;i<n;i++)
+                if(v[i]) Lambda.push_back(i+1);
 
-        // 判断常量类型
-        bool has11=false, has22=false;
-        for(auto& b:blocks01){
-            if(is_constant_block(b)){
-                if(b[0]=='1') has11=true;
-                if(b[0]=='0') has22=true;
+            // swap_chain
+            vector<vector<stp_data>> swap_chain;
+            for(int k=s;k>=1;k--){
+                int j_k = Lambda[k-1];
+                int exp = j_k + (s-1) - k;
+                swap_chain.push_back(generate_swap_vec(2, pow(2,exp)));
             }
-        }
+            swap_chain.push_back(generate_swap_vec(pow(2,n-s), pow(2,s)));
 
-        vector<pair<string,string>> S_list;
+            vector<stp_data> Mperm =
+                Vec_chain_multiply(swap_chain,false);
 
-        switch(cid){
-            case 1:
-                S_list={{"11","22"},{"22","11"}};
-                break;
-            case 2:
-                if(has11)
-                    S_list={{"11","12"},{"11","21"},{"12","11"},{"21","11"}};
-                else
-                    S_list={{"22","12"},{"22","21"},{"12","22"},{"21","22"}};
-                break;
-            case 3:
-                S_list={{"12","12"},{"21","21"}};
-                break;
-            case 4:
-                S_list={{"12","21"},{"21","12"}};
-                break;
-            case 5:
-                return build_small_tree(f12);
-        }
+            vector<stp_data> result =
+                Vec_semi_tensor_product(Mf,Mperm);
 
-        // 只取第一个 S（按你的 case 规则）
-        auto ret = run_case_once(blocks01, s, S_list[0].first, S_list[0].second);
+            string reordered;
+            reordered.reserve(len);
+            for(size_t i=1;i<result.size();++i)
+                reordered.push_back(result[i]?'1':'0');
 
-        // ------ 打印此层分解结果 ------
-        indent(depth);
-        cout << "MF  = [" << ret.MF  << "]\n";
-        indent(depth);
-        cout << "MΦ  = [" << ret.Mphi << "]\n";
-        indent(depth);
-        cout << "Mψ  = [" << ret.Mpsi << "]\n\n";
+            int cid = theorem33_case_id(reordered, s);
+            if(cid!=0){
+                // ---------- 打印重排命中 ----------
+                cout << "\n===== 重排命中：s="<<s<<" 情形("<<cid<<") =====\n";
+                cout << "Λ = { ";
+                for(int j : Lambda) cout<<j<<" ";
+                cout << "}  => reordered: " << reordered << "\n";
 
-        // ------ 递归（Mphi/Mpsi 里如果长度≤4，会走 build_small_tree）------
-        int left_id  = decompose(ret.Mphi, depth+1);
-        int right_id = decompose(ret.Mpsi, depth+1);
+                // ---------- 分块 ----------
+                int bl = 1<<s;
+                int nb = len/bl;
+                vector<string> blocks01(nb);
+                for(int i=0;i<nb;i++)
+                    blocks01[i] = reordered.substr(i*bl, bl);
 
-        // ------ 构造当前节点 ------
-        return new_node(ret.MF, {left_id, right_id});
+                cout << "\n===== 命中：s="<<s<<"，块长="<<bl<<"，块数="<<nb<<" =====\n";
+                cout << "分块：";
+                for(auto& b:blocks01) cout<<"["<<to12(b)<<"]";
+                cout << "\n=> 情形("<<cid<<")："<<case_note(cid)<<"\n\n";
+
+                // ---------- 按 case 选 S0,S1 ----------
+                bool has11=false, has22=false;
+                for(auto& b:blocks01){
+                    if(is_constant_block(b)){
+                        if(b[0]=='1') has11=true;
+                        if(b[0]=='0') has22=true;
+                    }
+                }
+
+                vector<pair<string,string>> S_list;
+                switch(cid){
+                    case 1:
+                        S_list = {{"11","22"},{"22","11"}};
+                        break;
+                    case 2:
+                        if(has11)
+                            S_list = {{"11","12"},{"11","21"},{"12","11"},{"21","11"}};
+                        else
+                            S_list = {{"22","12"},{"22","21"},{"12","22"},{"21","22"}};
+                        break;
+                    case 3:
+                        S_list = {{"12","12"},{"21","21"}};
+                        break;
+                    case 4:
+                        S_list = {{"12","21"},{"21","12"}};
+                        break;
+                    case 5:
+                        return false;   // 恒定函数，不再分解
+                }
+
+                string S0 = S_list[0].first;
+                string S1 = S_list[0].second;
+
+                auto R = run_case_once(blocks01, s, S0, S1);
+
+                // ---------- 打印这一步分解 ----------
+                cout << STEP_ID++ << ". MF  = [" << R.MF  << "]\n";
+                cout << "   MΦ  = [" << R.Mphi << "]\n";
+                cout << "   Mψ  = [" << R.Mpsi << "]\n\n";
+
+                MF12 = R.MF;
+                phi01 = to01(R.Mphi);   // 标签串 1/2 -> 01
+                psi01 = to01(R.Mpsi);   // 真值表 12 -> 01
+                return true;
+            }
+
+        }while(prev_permutation(v.begin(), v.end()));
     }
 
-    // 无法分解 → 当小 LUT 处理
-    return build_small_tree(f12);
+    return false;
 }
 
-
 // =============================
-// 顶层入口：analyze_by_s
+// 主递归：对 01 域真值表做 DSD
 // =============================
-inline bool analyze_by_s(const string& binary, int s)
+static int dsd_factor(const string& f01, int depth=0)
 {
-    int len = binary.size();
-    if(!is_power_of_two(len)) return false;
+    int len = f01.size();
 
-    int bl = 1<<s;
-    int nb = len/bl;
+    // 小函数：直接构造 2-LUT 结构
+    if(len <= 4 || !is_power_of_two(len)){
+        return build_small_tree_from01(f01);
+    }
 
-    vector<string> blocks01(nb);
-    for(int i=0;i<nb;i++)
-        blocks01[i]=binary.substr(i*bl, bl);
+    string MF12, phi01, psi01;
+    if(!factor_once_with_reorder_01(f01, depth, MF12, phi01, psi01)){
+        // 不能按定理 3.3 分解，当成 2-LUT
+        return build_small_tree_from01(f01);
+    }
 
-    int cid = theorem33_case_id(binary, s);
-    if(cid==0) return false;
+    int left_id  = dsd_factor(phi01, depth+1);
+    int right_id = dsd_factor(psi01, depth+1);
 
-    cout << "\n===== 命中 s="<<s<<" =====\n";
-    cout << "分块：";
-    for(auto& b:blocks01) cout<<"["<<to12(b)<<"]";
-    cout<<"\n\n";
+    return new_node(MF12, {left_id, right_id});
+}
 
-    // 重置节点表
+// =============================
+// 顶层入口：递归 DSD
+// =============================
+inline bool run_dsd_recursive(const string& binary01)
+{
+    if(!is_power_of_two(binary01.size())){
+        cout<<"输入长度必须是 2 的整数次幂\n";
+        return false;
+    }
+
     NODE_LIST.clear();
     NODE_ID = 1;
+    STEP_ID = 1;
 
-    string f12 = to12(binary);
+    cout << "输入 = " << binary01
+         << " (len = " << binary01.size() << ")\n";
 
-    // ------ 构造 root ------
-    int root = decompose(f12, 0);
+    int root = dsd_factor(binary01, 0);
 
-    // ------ 打印所有节点 ------
     cout << "===== 最终 DSD 节点列表 =====\n";
     for(auto& nd : NODE_LIST){
         cout << nd.id << " = " << nd.func;
@@ -316,7 +361,18 @@ inline bool analyze_by_s(const string& binary, int s)
         }
         cout<<"\n";
     }
-
     cout << "Root = " << root << "\n";
     return true;
+}
+
+// =============================
+// 兼容接口：给 reorder.hpp 里 all_reorders 调用
+// （如果还在用的话）
+// 这里简单地把 binary 当新的 f01 丢给 run_dsd_recursive
+// s 已经没用了，仅保持签名不报错
+// =============================
+inline bool analyze_by_s(const string& binary, int s)
+{
+    (void)s;
+    return run_dsd_recursive(binary);
 }
