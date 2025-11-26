@@ -5,7 +5,7 @@ using namespace std;
 #include <chrono>
 #include <fstream>
 #include "excute.hpp"
-#include"reorder.hpp"
+#include "reorder.hpp"   // is_constant_block / theorem33_case_id / all_reorders
 void all_reorders(const std::string &binary);
 
 //-----------------------------------------
@@ -21,8 +21,6 @@ vector<stp_data> identity_vec(int dim)
     return I;
 }
 
-
-
 //-----------------------------------------
 // 打印矩阵(调试)
 //-----------------------------------------
@@ -37,10 +35,6 @@ void print_vec(const vector<stp_data> &M)
     cout << "]\n";
 }
 
-
-
-
-
 //-----------------------------------------
 // 01 -> 12 表示（'0'->'2','1'->'1'）
 //-----------------------------------------
@@ -50,11 +44,20 @@ static inline string to12(string b01){
 }
 
 //-----------------------------------------
-// 乘法 ui * w ： ui∈{ "12","21" }，w为任意偶长串
-// [12]*w = w；[21]*w 每2位交换
+// 12 -> 01 表示（'1'->'1','2'->'0'）
+// 用于把 MΦ / Mψ 当成新的 01 域函数再分解
+//-----------------------------------------
+static inline string to01_from12(string w12){
+    string r = w12;
+    for(char& c : r) c = (c=='1' ? '1' : '0');
+    return r;
+}
+
+//-----------------------------------------
+// 乘法 ui * w ： ui∈{ "12","21","11","22" }，w为任意偶长串
+// [12]*w = w；[21]*w 每2位交换；[11]/[22] 常量投影
 //-----------------------------------------
 static string mul_ui(const string& u, const string& w){
-    // u ∈ {"12","21","11","22"}，w为偶数长度
     if(u=="12") return w;                 // 恒等
     if(u=="21"){                          // 每2位交换
         string r; r.reserve(w.size());
@@ -84,183 +87,331 @@ static string case_note(int cid){
     }
 }
 
-//==============================================================================
-// 通用模板求解：按块分组→枚举 S → 构造 MF → 求/验 (MΦ, Mψ)
-//==============================================================================
-
+//-----------------------------------------
+// 模板结果结构体
+//-----------------------------------------
 struct TemplateResult{
-    string TypeName; // Type1/2/3/4
-    string S0, S1;   // S = {S0, S1}
-    string MF;       // [i1 i2 i3 i4] = [S0 S1]
-    string Mphi;     // [j1 ... j_m]
-    string Mpsi;     // ..
+    string S0, S1;   // 输入的 S = {S0, S1}
+    string MF;       // S0S1 拼接
+    string Mphi;     // 1/2 字符串（12 域）
+    string Mpsi;     // 1/2 字符串（12 域）
 };
 
-// blocks01: 原始01域分块；s：分块参数
-static vector<TemplateResult> solve_with_template(const vector<string>& blocks01, int s)
-{
-    vector<string> W; W.reserve(blocks01.size());
-    for(auto &b: blocks01) W.push_back(to12(b));
-    const int m = (int)W.size();
-    vector<TemplateResult> answers;
-
-    // 按块值分组（最多两组）
-    unordered_map<string,int> gid;
-    vector<int> gidx(m, -1);
-    vector<string> gval;
-    for(int i=0;i<m;++i){
-        if(!gid.count(W[i])){ gid[W[i]]=gval.size(); gval.push_back(W[i]); }
-        gidx[i]=gid[W[i]];
-    }
-    if(gval.size()==0||gval.size()>2) return answers;
-
-    bool has11=false, has22=false;
-    for(auto &b: W){
-        if(is_constant_block(b)){
-            if(b[0]=='1') has11=true;
-            if(b[0]=='2') has22=true;
-        }
-    }
-
-    // 枚举所有可能的 S
-    vector<pair<string,string>> Scands;
-    Scands.push_back({"11","22"});
-    Scands.push_back({"22","11"});
-    if(has22){
-        Scands.push_back({"22","12"});
-        Scands.push_back({"22","21"});
-        Scands.push_back({"21","22"});
-        Scands.push_back({"12","22"});
-    }
-    if(has11){
-        Scands.push_back({"11","12"});
-        Scands.push_back({"11","21"});
-        Scands.push_back({"12","11"});
-        Scands.push_back({"21","11"});
-    }
-    Scands.push_back({"12","12"});
-    Scands.push_back({"21","21"});
-    Scands.push_back({"12","21"});
-    Scands.push_back({"21","12"});
-
-    auto is_invertible = [](const string& u){ return (u=="12"||u=="21"); };
-
-    for(const auto& S : Scands)
-    {
-        string S0=S.first, S1=S.second;
-        string MF=S0+S1;
-
-        // 找两组代表
-        int repA=-1,repB=-1;
-        for(int i=0;i<m;++i){ if(gidx[i]==0){repA=i;break;} }
-        for(int i=0;i<m;++i){ if(gidx[i]==1){repB=i;break;} }
-        if(repA<0&&repB<0) continue;
-        if(repA<0) repA=repB; if(repB<0) repB=repA;
-
-        for(int map=0; map<2; ++map)
-        {
-            string u_g0=(map==0)?S0:S1;
-            string u_g1=(map==0)?S1:S0;
-
-            // === 修正版：只用可逆u反推Mψ，常量u只校验 ===
-            vector<string> mpsi_candidates;
-            if(is_invertible(u_g0)) mpsi_candidates.push_back(mul_ui(u_g0,W[repA]));
-            if(is_invertible(u_g1)) mpsi_candidates.push_back(mul_ui(u_g1,W[repB]));
-
-            string Mpsi;
-            if(mpsi_candidates.empty()){
-                int pick=-1;
-                for(int i=0;i<m;++i) if(!is_constant_block(W[i])){pick=i;break;}
-                if(pick<0) pick=repA;
-                Mpsi=W[pick];
-            }else{
-                bool same=true;
-                for(size_t k=1;k<mpsi_candidates.size();++k)
-                    if(mpsi_candidates[k]!=mpsi_candidates[0]){same=false;break;}
-                if(!same) continue;
-                Mpsi=mpsi_candidates[0];
-            }
-
-            string gen0=mul_ui(u_g0,Mpsi);
-            string gen1=mul_ui(u_g1,Mpsi);
-            // ===================================================
-            // 改进版：根据块分组与 j 分配动态构造 MΦ
-            // ===================================================
-            bool ok = true;
-            string Mphi; Mphi.reserve(m);
-
-            // 哪组取 j=1，哪组取 j=2
-            // 默认 group0 对应 j=1, group1 对应 j=2，若反过来映射再交换
-            for (int i = 0; i < m; ++i)
-            {
-                int gid_i = gidx[i];
-                if ((gid_i == 0 && map == 0) || (gid_i == 1 && map == 1))
-                    Mphi.push_back('1');
-                else
-                    Mphi.push_back('2');
-            }
-
-            // 逐块验证是否满足 Wi = [ip iq]*Mψ
-            for (int i = 0; i < m; ++i)
-            {
-                string ipiq = (Mphi[i] == '1') ? S0 : S1;
-                string expect = mul_ui(ipiq, Mpsi);
-                if (W[i] != expect) { ok = false; break; }
-            }
-            if (!ok) continue;
-
-
-            string typeName="Type 4";
-            if((S0=="11"&&S1=="22")||(S0=="22"&&S1=="11")) typeName="Type 1";
-            else if((S0=="12"&&S1=="12")||(S0=="21"&&S1=="21")) typeName="Type 3";
-            else if((S0=="12"&&S1=="21")||(S0=="21"&&S1=="12")) typeName="Type 4";
-            else typeName="Type 2";
-
-            answers.push_back({typeName,S0,S1,MF,Mphi,Mpsi});
-        }
-    }
-    return answers;
-}
 //-----------------------------------------
-// 对给定 s 执行分块并仅在命中时打印 + 调用通用模板打印解
+// 固定 S 情况下的通用模板求解
+// blocks01 是 "01 域"，内部会转成 12 域
+//-----------------------------------------
+static TemplateResult run_template_with_fixed_S(
+    const vector<string>& blocks01,
+    int /*s*/,
+    const string& S0,
+    const string& S1
+){
+    vector<string> W;
+    for (auto& b : blocks01) W.push_back(to12(b));
+    int m = W.size();
+
+    string MF = S0 + S1;
+
+    // 1. 找 Mψ
+    string Mpsi;
+    {
+        bool found = false;
+        auto try_u = [&](const string& u){
+            if (u=="12" || u=="21"){
+                for(int i=0;i<m;i++){
+                    string candidate = mul_ui(u, W[i]);
+                    if (mul_ui(u, candidate) == W[i]) {
+                        Mpsi = candidate;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        if (!found && try_u(S0)) found=true;
+        if (!found && try_u(S1)) found=true;
+
+        // 若还是没找到，取第一个非常量块
+        if (!found){
+            int pick=-1;
+            for(int i=0;i<m;i++){
+                if (!is_constant_block(blocks01[i])){
+                    pick=i; break;
+                }
+            }
+            if (pick<0) pick=0;
+            Mpsi = W[pick];
+        }
+    }
+
+    // 2. 求 MΦ
+    string Mphi; Mphi.reserve(m);
+    string expect0 = mul_ui(S0, Mpsi);
+    string expect1 = mul_ui(S1, Mpsi);
+    for (int i=0;i<m;i++){
+        if (W[i] == expect0) Mphi.push_back('1');
+        else                 Mphi.push_back('2');
+    }
+
+    return { S0, S1, MF, Mphi, Mpsi };
+}
+
+//-----------------------------------------
+// 打印缩进（递归用）
+//-----------------------------------------
+static inline void print_indent(int depth){
+    for(int i=0;i<depth;i++) cout << "   ";
+}
+
+//-----------------------------------------
+// 递归分解：对 12 域函数 f12 继续分解到 2-LUT
+//-----------------------------------------
+static void recursive_decompose_12(const string& f12, int depth)
+{
+    string bin = to01_from12(f12);
+    int len = bin.size();
+
+    // 终止条件：长度 <= 4 -> 2-LUT 叶子
+    if(len <= 4){
+        print_indent(depth);
+        cout << "Leaf (2-LUT): f = [" << f12 << "] (len=" << len << ")\n";
+        return;
+    }
+
+    if(!is_power_of_two(len)){
+        print_indent(depth);
+        cout << "无法继续分解（长度非 2 的幂）: f = [" << f12 << "] len=" << len << "\n";
+        return;
+    }
+
+    int n = std::log2(len);
+    int r = n / 2;
+    bool found = false;
+
+    for(int s=1; s<=r && !found; ++s)
+    {
+        int cid = theorem33_case_id(bin, s);
+        if (cid == 0) continue;
+
+        int block_len = 1 << s;
+        int num_blocks = len / block_len;
+        vector<string> blocks01(num_blocks);
+        for(int i=0;i<num_blocks;i++)
+            blocks01[i] = bin.substr(i*block_len, block_len);
+
+        // 统计常量类型
+        bool has11=false, has22=false;
+        for(auto& b : blocks01){
+            if(is_constant_block(b)){
+                if (b[0]=='1') has11=true; // 全1块
+                if (b[0]=='0') has22=true; // 全0块（映射到 22）
+            }
+        }
+
+        vector<pair<string,string>> S_list;
+
+        // --- 与顶层 analyze_by_s 一致的 Case→S 映射 ---
+        if (cid == 1)
+        {
+            S_list = { {"11","22"}, {"22","11"} };
+        }
+        else if (cid == 2)
+        {
+            if (has11){ // 常量 = 11
+                S_list = {
+                    {"11","12"}, {"11","21"},
+                    {"12","11"}, {"21","11"}
+                };
+            }else{ // 常量 = 22
+                S_list = {
+                    {"22","12"}, {"22","21"},
+                    {"12","22"}, {"21","22"}
+                };
+            }
+        }
+        else if (cid == 3)
+        {
+            S_list = { {"12","12"}, {"21","21"} };
+        }
+        else if (cid == 4)
+        {
+            S_list = { {"12","21"}, {"21","12"} };
+        }
+        else if (cid == 5)
+        {
+            print_indent(depth);
+            cout << "函数恒定（Case 5），停止分解: f = ["<< f12 <<"]\n";
+            return;
+        }
+
+        // 这里我们取第一个可行的 S（你以后也可以改成枚举所有 S）
+        for(auto& S : S_list)
+        {
+            TemplateResult R = run_template_with_fixed_S(blocks01, s, S.first, S.second);
+
+            print_indent(depth);
+            cout << "递归分解：s="<<s<<" case="<<cid
+                 << "  MF=["<<R.MF<<"]  对应 f=["<<f12<<"]\n";
+            print_indent(depth);
+            cout << "   MΦ = [" << R.Mphi << "]\n";
+            print_indent(depth);
+            cout << "   Mψ = [" << R.Mpsi << "]\n";
+
+            // 递归处理 MΦ
+            if(to01_from12(R.Mphi).size() > 4){
+                recursive_decompose_12(R.Mphi, depth+1);
+            }else{
+                print_indent(depth+1);
+                cout << "Φ 叶子 (2-LUT): ["<< R.Mphi <<"]\n";
+            }
+
+            // 递归处理 Mψ
+            if(to01_from12(R.Mpsi).size() > 4){
+                recursive_decompose_12(R.Mpsi, depth+1);
+            }else{
+                print_indent(depth+1);
+                cout << "ψ 叶子 (2-LUT): ["<< R.Mpsi <<"]\n";
+            }
+
+            found = true;
+            break;
+        }
+    }
+
+    if(!found){
+        print_indent(depth);
+        cout << "未找到可用的 Case 继续分解: f = ["<< f12 <<"]\n";
+    }
+}
+
+//-----------------------------------------
+// 顶层：对给定 s 执行分块 + Case 判定 + 固定 S + 通用模板
+// 然后对 MΦ/Mψ 做递归分解
 //-----------------------------------------
 inline bool analyze_by_s(const std::string& binary, int s){
     const int n = std::log2(binary.size());
-    const int r = n/2;
     if(!is_power_of_two(binary.size()) || (1<<n)!=(int)binary.size()) return false;
-    if(s<1 || s>r) return false;
 
-    const int block_len = 1<<s;
-    const int num_blocks = binary.size() / block_len;
-    std::vector<std::string> blocks01(num_blocks);
-    for(int i=0;i<num_blocks;++i)
-        blocks01[i]=binary.substr(i*block_len, block_len);
+    int r = n/2;
+    if (s < 1 || s > r) return false;
+
+    int block_len = 1 << s;
+    int num_blocks = binary.size() / block_len;
+
+    vector<string> blocks01(num_blocks);
+    for(int i=0;i<num_blocks;i++)
+        blocks01[i] = binary.substr(i*block_len, block_len);
 
     int cid = theorem33_case_id(binary, s);
-    if(cid==0) return false;
+    if (cid == 0) return false;
 
-    cout << "\n===== 命中：s="<<s<<"，块长 2^s="<<block_len<<"，块数="<<num_blocks<<" =====\n";
-    cout << "分块："; for(auto &b: blocks01) cout<<"["<<to12(b)<<"]";
-    cout << "\n=> 情形("<<cid<<")：" << case_note(cid) << "\n";
+    cout << "\n===== 命中：s="<<s<<"，块长="<<block_len<<"，块数="<<num_blocks<<" =====\n";
+    cout << "分块：";
+    for(auto& b: blocks01) cout<<"["<<to12(b)<<"]";
+    cout << "\n=> 情形("<<cid<<")：" << case_note(cid) << "\n\n";
 
-    auto results = solve_with_template(blocks01, s);
-    if(results.empty()){
-        cout << "❌ 未找到可行的 (MF, MΦ, Mψ)\n";
-    }else{
-        int idx=1;
-        for(auto &r:results){
-            cout << "\n【"<<r.TypeName<<"】 S = {δ2["<<r.S0<<"], δ2["<<r.S1<<"]}\n";
-            cout << idx++ << ". MF = ["<<r.MF<<"]\n";
-            cout << "   MΦ = ["<<r.Mphi<<"]\n\n";
-            cout << "   Mψ = ["<<r.Mpsi<<"]\n";
+    vector<pair<string,string>> S_list;
+
+    // 统计常量类型（注意 01 域：0 -> 22, 1 -> 11）
+    bool has11=false, has22=false;
+    for(auto& b : blocks01){
+        if(is_constant_block(b)){
+            if (b[0]=='1') has11=true; // 全1块 -> 11
+            if (b[0]=='0') has22=true; // 全0块 -> 22
         }
     }
+
+    // =============================
+    // Case 1：两个常量块
+    // =============================
+    if (cid == 1)
+    {
+        S_list = { {"11","22"}, {"22","11"} };
+    }
+
+    // =============================
+    // Case 2：一种常量 + 一种非常量
+    // =============================
+    else if (cid == 2)
+    {
+        if (has11){ // 常量 = 11
+            S_list = {
+                {"11","12"}, {"11","21"},
+                {"12","11"}, {"21","11"}
+            };
+        }else{ // 常量 = 22
+            S_list = {
+                {"22","12"}, {"22","21"},
+                {"12","22"}, {"21","22"}
+            };
+        }
+    }
+
+    // =============================
+    // Case 3：只有一种非常量
+    // =============================
+    else if (cid == 3)
+    {
+        S_list = { {"12","12"}, {"21","21"} };
+    }
+
+    // =============================
+    // Case 4：两个互补非常量
+    // =============================
+    else if (cid == 4)
+    {
+        S_list = { {"12","21"}, {"21","12"} };
+    }
+
+    // =============================
+    // Case 5：恒定函数
+    // =============================
+    else if (cid == 5)
+    {
+        cout << "函数恒定，无意义。\n";
+        return true;
+    }
+
+    // =============================
+    // 进行计算：使用每个 S
+    // =============================
+    int idx=1;
+    for(auto& S : S_list)
+    {
+        auto R = run_template_with_fixed_S(blocks01, s, S.first, S.second);
+
+        cout << idx++ << ". 顶层 MF = [" << R.MF << "]\n";
+        cout << "   MΦ = [" << R.Mphi << "]\n";
+        cout << "   Mψ = [" << R.Mpsi << "]\n\n";
+
+        // === 递归分解 MΦ / Mψ 到 2-LUT ===
+        if(to01_from12(R.Mphi).size() > 4 || to01_from12(R.Mpsi).size() > 4){
+            cout << "   ⇩ 对子函数继续分解：\n";
+            if(to01_from12(R.Mphi).size() > 4)
+                recursive_decompose_12(R.Mphi, 2); // depth=2，缩进更深一点
+            else{
+                print_indent(2);
+                cout << "Φ 已是 2-LUT: ["<< R.Mphi <<"]\n";
+            }
+
+            if(to01_from12(R.Mpsi).size() > 4)
+                recursive_decompose_12(R.Mpsi, 2);
+            else{
+                print_indent(2);
+                cout << "ψ 已是 2-LUT: ["<< R.Mpsi <<"]\n";
+            }
+        }
+    }
+
     return true;
 }
+
 //-----------------------------------------
 // 批量检测（只打印符合的）
 //-----------------------------------------
-void analyze_all_s(const std::string& binary){
+inline void analyze_all_s(const std::string& binary){
     const int n = std::log2(binary.size());
     if(!is_power_of_two(binary.size()) || (1<<n)!=(int)binary.size()){
         std::cout << "输入长度必须是 2 的整数次幂\n"; return;
@@ -269,7 +420,3 @@ void analyze_all_s(const std::string& binary){
     for(int s=1; s<=r; ++s)
         analyze_by_s(binary, s);
 }
-
-//-----------------------------------------
-// 主过程：生成所有重排并分析（仅打印符合的）
-//-----------------------------------------

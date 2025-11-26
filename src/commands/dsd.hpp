@@ -53,7 +53,11 @@ namespace alice
             std::cout << "❌ Error: length (" << raw.size() << ") is not power of 2\n";
             return;
         }
-
+         
+        if (raw.size() == 4) {
+           std::cout << "⚠ 输入函数已是 2-LUT，无需分解。\n";
+        return;
+        }
         std::cout << "➡ Raw truth-table mode (-x)\n";
         std::cout << "Input = " << raw << "\n";
 
@@ -86,6 +90,11 @@ namespace alice
     if ((1u << num_vars) != bit_count)
     {
         std::cout << "❌ Hex length is not 2^n bits\n";
+        return;
+    }
+
+        if (bit_count == 4) {
+        std::cout << "⚠ 输入函数已是 2-LUT，无需分解。\n";
         return;
     }
 
