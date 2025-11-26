@@ -70,74 +70,9 @@ static int theorem33_case_id(const std::string& binary, int s){
     return 0;
 }
 
-// // -----------------------------------------
-// //          重排主函数（核心功能）
-// // -----------------------------------------
-// inline void all_reorders(const string &binary)
-// {
-//     int len = binary.size();
-//     if(!is_power_of_two(len)){
-//         std::cout<<"输入长度必须是 2 的整数次幂\n";
-//         return;
-//     }
-//     int n = log2(len);
-//     int r = n / 2;
-
-//     vector<stp_data> Mf = binary_to_vec(binary);
-
-//     for(int s=1; s<=r; ++s)
-//     {
-//         vector<bool> v(n);
-//         fill(v.begin(), v.begin()+s, true);
-
-//         do{
-//             vector<int> Lambda;
-//             for(int i=0;i<n;i++)
-//                 if(v[i]) Lambda.push_back(i+1);
-
-//             vector<vector<stp_data>> swap_chain;
-
-//             for(int k=s;k>=1;k--){
-//                 int j_k = Lambda[k-1];
-//                 int exp = j_k + (s-1) - k;
-//                 swap_chain.push_back(generate_swap_vec(2, pow(2,exp)));
-//             }
-//             swap_chain.push_back(generate_swap_vec(pow(2,n-s), pow(2,s)));
-
-//             vector<stp_data> Mperm =
-//                 Vec_chain_multiply(swap_chain,false);
-
-//             vector<stp_data> result =
-//                 Vec_semi_tensor_product(Mf,Mperm);
-
-//             string reordered;
-//             for(size_t i=1;i<result.size();++i)
-//                 reordered.push_back(result[i]?'1':'0');
-
-//             int cid = theorem33_case_id(reordered, s);
-//             if(cid!=0){
-//                 cout << "\n===== 重排命中：s="<<s<<" 情形("<<cid<<") =====\n";
-//                 cout << "Λ = { ";
-//                 for(int j : Lambda) cout<<j<<" ";
-//                 cout << "}  => reordered: " << reordered << "\n";
-
-//                 // 🔥🔥🔥 关键：直接做分解
-//                 analyze_by_s(reordered, s);
-
-//                 // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-//                 // 立即退出，不再继续重排//只要符合一个分解就直接退出
-//                 // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-//                 return;
-//             }
-
-//         }while(prev_permutation(v.begin(),v.end()));
-//     }
-
-//     cout << "❌ 所有重排均未命中任何分解模式\n";
-// }
-
-
-//////////////做所有的重排情况,上面的是若有一个命中就退出
+// -----------------------------------------
+//          重排主函数（核心功能）
+// -----------------------------------------
 inline void all_reorders(const string &binary)
 {
     int len = binary.size();
@@ -169,8 +104,11 @@ inline void all_reorders(const string &binary)
             }
             swap_chain.push_back(generate_swap_vec(pow(2,n-s), pow(2,s)));
 
-            vector<stp_data> Mperm = Vec_chain_multiply(swap_chain,false);
-            vector<stp_data> result = Vec_semi_tensor_product(Mf,Mperm);
+            vector<stp_data> Mperm =
+                Vec_chain_multiply(swap_chain,false);
+
+            vector<stp_data> result =
+                Vec_semi_tensor_product(Mf,Mperm);
 
             string reordered;
             for(size_t i=1;i<result.size();++i)
@@ -183,13 +121,75 @@ inline void all_reorders(const string &binary)
                 for(int j : Lambda) cout<<j<<" ";
                 cout << "}  => reordered: " << reordered << "\n";
 
-                // 🔥🔥🔥 关键：继续做分解 !!! 🔥🔥🔥
+                // 🔥🔥🔥 关键：直接做分解
                 analyze_by_s(reordered, s);
+
+                // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+                // 立即退出，不再继续重排//只要符合一个分解就直接退出
+                // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+                return;
             }
 
         }while(prev_permutation(v.begin(),v.end()));
     }
+
+    cout << "❌ 所有重排均未命中任何分解模式\n";
 }
+
+
+// //////////////做所有的重排情况,上面的是若有一个命中就退出
+// inline void all_reorders(const string &binary)
+// {
+//     int len = binary.size();
+//     if(!is_power_of_two(len)){
+//         std::cout<<"输入长度必须是 2 的整数次幂\n";
+//         return;
+//     }
+//     int n = log2(len);
+//     int r = n / 2;
+
+//     vector<stp_data> Mf = binary_to_vec(binary);
+
+//     for(int s=1; s<=r; ++s)
+//     {
+//         vector<bool> v(n);
+//         fill(v.begin(), v.begin()+s, true);
+
+//         do{
+//             vector<int> Lambda;
+//             for(int i=0;i<n;i++)
+//                 if(v[i]) Lambda.push_back(i+1);
+
+//             vector<vector<stp_data>> swap_chain;
+
+//             for(int k=s;k>=1;k--){
+//                 int j_k = Lambda[k-1];
+//                 int exp = j_k + (s-1) - k;
+//                 swap_chain.push_back(generate_swap_vec(2, pow(2,exp)));
+//             }
+//             swap_chain.push_back(generate_swap_vec(pow(2,n-s), pow(2,s)));
+
+//             vector<stp_data> Mperm = Vec_chain_multiply(swap_chain,false);
+//             vector<stp_data> result = Vec_semi_tensor_product(Mf,Mperm);
+
+//             string reordered;
+//             for(size_t i=1;i<result.size();++i)
+//                 reordered.push_back(result[i]?'1':'0');
+
+//             int cid = theorem33_case_id(reordered, s);
+//             if(cid!=0){
+//                 cout << "\n===== 重排命中：s="<<s<<" 情形("<<cid<<") =====\n";
+//                 cout << "Λ = { ";
+//                 for(int j : Lambda) cout<<j<<" ";
+//                 cout << "}  => reordered: " << reordered << "\n";
+
+//                 // 🔥🔥🔥 关键：继续做分解 !!! 🔥🔥🔥
+//                 analyze_by_s(reordered, s);
+//             }
+
+//         }while(prev_permutation(v.begin(),v.end()));
+//     }
+// }
 
 //==============================================================
 //    含 x / 多字符重排专用：不做分解、不做模式分析
