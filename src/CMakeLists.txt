@@ -63,6 +63,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(SOURCES stp.cpp)
 add_executable(stp ${SOURCES} ${FILENAMES})
 
+
+# -----------------------------------------------
+# OpenMP  🔥 重点就这几行
+# -----------------------------------------------
+find_package(OpenMP REQUIRED)
+if (OpenMP_CXX_FOUND)
+    target_link_libraries(stp PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
 # -----------------------------------------------
 # Link core libraries
 # -----------------------------------------------

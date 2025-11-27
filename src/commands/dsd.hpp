@@ -110,7 +110,8 @@ namespace alice
 
     // 计时
     auto t1 = clk::now();
-    all_reorders(binary);
+    //all_reorders(binary);
+    run_dsd_recursive(binary);
     auto t2 = clk::now();
 
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();

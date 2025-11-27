@@ -4,7 +4,7 @@ using namespace std;
 
 #include "excute.hpp"   // generate_swap_vec / Vec_chain_multiply / Vec_semi_tensor_product
 
-bool analyze_by_s(const std::string& binary, int s);
+bool run_dsd_recursive(const string& binary01);
 
 //-----------------------------------------
 // 判断是否为 2 的幂
@@ -122,7 +122,7 @@ inline void all_reorders(const string &binary)
                 cout << "}  => reordered: " << reordered << "\n";
 
                 // 🔥🔥🔥 关键：直接做分解
-                analyze_by_s(reordered, s);
+                run_dsd_recursive(reordered);
 
                 // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
                 // 立即退出，不再继续重排//只要符合一个分解就直接退出
@@ -184,7 +184,7 @@ inline void all_reorders(const string &binary)
 //                 cout << "}  => reordered: " << reordered << "\n";
 
 //                 // 🔥🔥🔥 关键：继续做分解 !!! 🔥🔥🔥
-//                 analyze_by_s(reordered, s);
+//                 run_dsd_recursive(reordered, s);
 //             }
 
 //         }while(prev_permutation(v.begin(),v.end()));
