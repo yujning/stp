@@ -16,14 +16,11 @@ namespace alice
 {
 
 // ========================================================
-// 变量编号反向映射：max→a, 次 max→b, ..., 1→最后一个字母
-//   例如变量数=7： 7→a, 6→b, 5→c, 4→d, 3→e, 2→f, 1→g
+// 变量编号 0=a,1=b,... 直接映射为字母
 // ========================================================
 static std::string varname_from_id(int v)
 {
-    int max_id = FINAL_VAR_ORDER.size();
-    char name = 'a' + (max_id - v);  // 反向映射
-    return std::string(1, name);
+    return std::string(1, char('a' + v));
 }
 
 // ========================================================
@@ -32,7 +29,7 @@ static std::string varname_from_id(int v)
 static std::string bin_to_hex(const std::string& bin)
 {
     int v = std::stoi(bin, nullptr, 2);
-    char buf[50];
+    char buf[20];
     sprintf(buf, "%x", v);
     return std::string(buf);
 }
@@ -68,54 +65,52 @@ protected:
             return;
         }
 
-        if (NODE_LIST.empty())
+        if (FINAL_VAR_ORDER.empty())
         {
-            std::cout << "❌ NODE_LIST is empty! (DSD not run?)\n";
+            std::cout << "❌ FINAL_VAR_ORDER empty! (DSD not run?)\n";
             return;
         }
 
+        int nvars = FINAL_VAR_ORDER.size();
+
         // ====================================================
-        // 1) 输入节点：按 DSDNode.var_id 输出
+        // 1) 输出全部 INPUT() —— 即使某些变量未在 NODE_LIST 内出现
         // ====================================================
-        for (auto &n : NODE_LIST)
+        for (int v = 0; v < nvars; v++)
         {
-            if (n.func == "in")
-            {
-                std::string name = varname_from_id(n.var_id);
-                fout << "INPUT(" << name << ")\n";
-            }
+            fout << "INPUT(" << varname_from_id(v) << ")\n";
         }
 
         // ====================================================
-        // 2) 输出节点 F0
+        // 2) 输出 F0
         // ====================================================
         fout << "OUTPUT(F0)\n\n";
 
         // ====================================================
-        // 3) 节点命名：输入用字母，非输入用 new_nX
+        // 3) 节点命名
         // ====================================================
         std::map<int, std::string> name_of;
 
-        // 输入节点：变量名
+        // 输入节点：根据 var_id 映射字母
         for (auto &n : NODE_LIST)
         {
             if (n.func == "in")
                 name_of[n.id] = varname_from_id(n.var_id);
         }
 
-        // 内部节点：new_nX
+        // 非输入：new_nX
         for (auto &n : NODE_LIST)
         {
             if (n.func != "in")
                 name_of[n.id] = "new_n" + std::to_string(n.id);
         }
 
-        // Root 重命名为 F0
+        // Root 改名 F0
         int root_id = NODE_LIST.back().id;
         name_of[root_id] = "F0";
 
         // ====================================================
-        // 4) 输出 LUT，其中 child 左右互换（只对 2 输入）
+        // 4) 输出 LUT: 二输入交换 child[1], child[0]
         // ====================================================
         for (auto &n : NODE_LIST)
         {
@@ -124,21 +119,21 @@ protected:
             fout << name_of[n.id] << " = LUT 0x"
                  << bin_to_hex(n.func) << " (";
 
-            int cnt = n.child.size();
+            int k = n.child.size();
 
-            if (cnt == 2)
+            if (k == 2)
             {
-                // ⭐ 左右互换
+                // ⭐ 两输入：交换顺序
                 fout << name_of[n.child[1]] << ", "
                      << name_of[n.child[0]];
             }
             else
             {
-                // 单输入或多输入：顺序不动
-                for (int i = 0; i < cnt; i++)
+                // 单输入或其他：保持原顺序
+                for (int i = 0; i < k; i++)
                 {
                     fout << name_of[n.child[i]];
-                    if (i + 1 < cnt) fout << ", ";
+                    if (i + 1 < k) fout << ", ";
                 }
             }
 

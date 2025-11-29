@@ -2,24 +2,23 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-// bench 输出会用到最终变量顺序
+// bench 输出用：最终输入变量顺序（0=a,1=b,...）
 inline std::vector<int> FINAL_VAR_ORDER;
 
 #include "excute.hpp"
 #include "reorder.hpp"
 
-// kitty 真值表
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/operations.hpp>
 
 // =====================================================
-// DSD 节点结构：输入节点带 var_id (1=a,2=b,...)
+// DSD 节点结构：输入节点带 var_id (0=a,1=b,...)
 // =====================================================
 struct DSDNode {
     int id;                 // 节点编号（1,2,3,...）
-    std::string func;       // 真值表 / MF 串（"in" / "0010" / "10" ...）
-    std::vector<int> child; // 子节点编号（指向 NODE_LIST 中的 id）
-    int var_id = -1;        // 对输入节点："in" 时存变量编号；其它节点 = -1
+    std::string func;       // "in" / "0010" / "10" / "0001" / ...
+    std::vector<int> child; // 子节点 id
+    int var_id = -1;        // 仅输入节点有效：0=a,1=b,...
 };
 
 static std::vector<DSDNode> NODE_LIST;
@@ -27,9 +26,9 @@ static int NODE_ID = 1;
 static int STEP_ID = 1;
 
 // =====================================================
-// Truth table + 变量顺序 封装
-//   f01  : 01 串，长度 2^n
-//   order[i] : 第 i 个 bit 变量（低位）对应的原始变量编号(1=a,2=b,...)
+// Truth table + 变量顺序
+//   f01        : 长度 2^n 的 01 串
+//   order[i]   : bit i 对应的“变量编号”（0=a,1=b,...）
 // =====================================================
 struct TT {
     std::string f01;
@@ -37,7 +36,7 @@ struct TT {
 };
 
 // =====================================================
-// 工具：01 串 <-> kitty truth table
+// 工具：01 串 → kitty truth table
 // =====================================================
 static kitty::dynamic_truth_table make_tt_from01(const std::string& f01)
 {
@@ -52,6 +51,7 @@ static kitty::dynamic_truth_table make_tt_from01(const std::string& f01)
     return tt;
 }
 
+// 支持集 bit 下标（0-based）
 static std::vector<int> get_support_bits(const std::string& f01)
 {
     auto tt = make_tt_from01(f01);
@@ -63,20 +63,20 @@ static std::vector<int> get_support_bits(const std::string& f01)
 }
 
 // =====================================================
-// 按支持集缩减 TT（f01 + order 同步缩减）
+// 按支持集缩减 TT：f01 + order 同步缩减
 // =====================================================
 static TT shrink_to_support(const TT& in)
 {
     auto tt = make_tt_from01(in.f01);
 
-    std::vector<int> support_bits;
+    std::vector<int> supp_bits;
     for (uint8_t i = 0; i < tt.num_vars(); i++)
         if (kitty::has_var(tt, i))
-            support_bits.push_back(i);
+            supp_bits.push_back(i);
 
-    unsigned new_vars = support_bits.size();
+    unsigned new_vars = supp_bits.size();
     if (new_vars == tt.num_vars())
-        return in;  // 支持集已经覆盖全部变量，不用缩减
+        return in;  // 不需要缩减
 
     kitty::dynamic_truth_table new_tt(new_vars);
 
@@ -86,7 +86,7 @@ static TT shrink_to_support(const TT& in)
         for (unsigned b = 0; b < new_vars; b++)
         {
             uint64_t bit = (x >> b) & 1;
-            old_index |= (bit << support_bits[b]);  // 映射回原来的 bit 位置
+            old_index |= (bit << supp_bits[b]);   // 映射回原 bit 位置
         }
         if (kitty::get_bit(tt, old_index))
             kitty::set_bit(new_tt, x);
@@ -97,12 +97,12 @@ static TT shrink_to_support(const TT& in)
     for (uint64_t i = 0; i < out.f01.size(); i++)
         out.f01[i] = kitty::get_bit(new_tt, i) ? '1' : '0';
 
-    // 同步缩减变量顺序：新第 b 个变量对应旧的 support_bits[b]
+    // 同步缩减变量顺序：新第 b 个变量 = 原来 bit = supp_bits[b] 对应的变量编号
     out.order.reserve(new_vars);
     for (unsigned b = 0; b < new_vars; b++)
     {
-        int bit_pos = support_bits[b];      // 0-based bit index
-        out.order.push_back(in.order[bit_pos]); // 映射到原始变量编号
+        int bit_pos = supp_bits[b];       // 0-based bit index
+        out.order.push_back(in.order[bit_pos]);
     }
 
     return out;
@@ -128,22 +128,22 @@ static inline std::string mul_ui(const std::string& ui, const std::string& w)
 }
 
 // =====================================================
-// 模板计算
+// 模板计算：保持你原先的逻辑
 // =====================================================
 struct TemplateResult {
-    std::string MF;    // 4 bit (u1,u2)
-    std::string Mphi;  // block 标签 01 串，长度 = #blocks = 2^(n-s)
-    std::string Mpsi;  // 子函数 01 串，长度 = block 大小 = 2^s
+    std::string MF;    // 4 bits
+    std::string Mphi;  // block 标签 01 串
+    std::string Mpsi;  // 子函数 01 串
 };
 
 static TemplateResult run_case_once(
-    const std::vector<std::string>& blocks01,
+    const std::vector<std::string>& blocks,
     int /*s*/,
     const std::string& S0,
     const std::string& S1)
 {
-    int m = blocks01.size();
-    std::vector<std::string> W = blocks01;
+    int m = blocks.size();
+    auto W = blocks;
 
     std::string MF = S0 + S1;
     std::string Mpsi;
@@ -153,7 +153,7 @@ static TemplateResult run_case_once(
             std::vector<std::string> cand;
             for (int i = 0; i < m; i++) {
                 if (is_constant_block(W[i])) continue;
-                std::string c = mul_ui(u, W[i]);
+                auto c = mul_ui(u, W[i]);
                 if (mul_ui(u, c) == W[i])
                     cand.push_back(c);
             }
@@ -186,7 +186,7 @@ static TemplateResult run_case_once(
 }
 
 // =====================================================
-// 构造节点
+// 创建节点
 // =====================================================
 static int new_node(const std::string& func, const std::vector<int>& child)
 {
@@ -195,67 +195,93 @@ static int new_node(const std::string& func, const std::vector<int>& child)
     return id;
 }
 
-// 构造“输入”节点：绑定变量编号 var_id
-static int new_in_node(int var_id)
+static int new_in_node(int var_id)   // var_id: 0=a,1=b,...
 {
     int id = NODE_ID++;
-    DSDNode nd;
-    nd.id     = id;
-    nd.func   = "in";
-    nd.child  = {};
-    nd.var_id = var_id;
-    NODE_LIST.push_back(nd);
+    NODE_LIST.push_back({ id, "in", {}, var_id });
     return id;
 }
 
-// 小规模真值表构树（n<=2），根据 TT.order 绑定变量编号
+// =====================================================
+// 小规模构树（n<=2）
+// =====================================================
 static int build_small_tree(const TT& t)
 {
-    int nv = (int)t.order.size();
+    int nv = t.order.size();
 
+    // ======================================================
+    //  case nv = 1：单变量函数（长度 2 的真值表）
+    // ======================================================
     if (nv == 1)
     {
-        int a = new_in_node(t.order[0]);        // 唯一变量
-        return new_node(t.f01, { a });
+        int a = new_in_node(t.order[0]);  // 变量节点
+
+        // 01 → NOT x
+        if (t.f01 == "01")
+            return new_node("01", {a});
+
+        // 10 → identity → 直接返回输入
+        if (t.f01 == "10")
+            return a;
+
+        // 00 → 常 0
+        if (t.f01 == "00")
+            return new_node("0", {});
+
+        // 11 → 常 1
+        if (t.f01 == "11")
+            return new_node("1", {});
+
+        // 不可能走到这里
+        return a;
     }
 
+    // ======================================================
+    // case nv = 2：普通两变量节点，照常建结构
+    // ======================================================
     if (nv == 2)
     {
-        int a = new_in_node(t.order[0]);        // 第一个变量
-        int b = new_in_node(t.order[1]);        // 第二个变量
-        return new_node(t.f01, { a, b });
+        int a = new_in_node(t.order[0]);
+        int b = new_in_node(t.order[1]);
+        return new_node(t.f01, {a, b});
     }
 
-    // 安全兜底（几乎不会到这里）
+    // ======================================================
+    // 兜底：>2 不会在这里触发
+    // ======================================================
     return new_node(t.f01, {});
 }
 
 // =====================================================
-// 单步分解（输入 / 输出都是 TT）
-// 负责：
-//   - 计算重排后的真值表
-//   - 根据 Λ 得到新的变量顺序 newOrder
-//   - 划分 Φ / Ψ 对应变量集合，填到 phi_tt.order / psi_tt.order
+// factor_once_with_reorder_01
+// 现在：
+//   - Λ 打印为“变量编号集合”（0=a,1=b,...）
+//   - 内部 swap-chain 仍使用 bit 位置（单独的 Lambda_bits）
+// =====================================================
+// =====================================================
+//      ⭐ 完整修正版：支持 LSB=a 的变量语义
+//      Λ 显示用 0-based 变量编号（0=a）
+//      STP 公式内部用 j=1..n 映射：j = n - i
 // =====================================================
 static bool factor_once_with_reorder_01(
     const TT& in,
-    int /*depth*/,
+    int depth,
     std::string& MF12,
     TT& phi_tt,
     TT& psi_tt)
 {
-    const std::string& binary01 = in.f01;
+    const string& bin = in.f01;
+    int len = bin.size();
+    if (!is_power_of_two(len) || len <= 4)
+        return false;
 
-    int len = binary01.size();
-    if (!is_power_of_two(len) || len <= 4) return false;
-
-    int n = (int)std::log2(len);  // 当前变量个数
+    int n = log2(len);
     int r = n / 2;
 
-    std::vector<stp_data> Mf = binary_to_vec(binary01);
+    auto Mf = binary_to_vec(bin);
 
-    // s 的尝试顺序（优先 2）
-    std::vector<int> s_order;
+    // s 优先级与原版保持一致
+    vector<int> s_order;
     if (r >= 2) {
         s_order.push_back(2);
         for (int s = 1; s <= r; s++)
@@ -268,20 +294,41 @@ static bool factor_once_with_reorder_01(
 
     for (int s : s_order)
     {
-        std::vector<bool> v(n);
-        std::fill(v.begin(), v.begin() + s, true);
+        vector<bool> v(n);
+        fill(v.begin(), v.begin() + s, true);
 
         do {
-            // 选中的 bit 位置（1-based）
-            std::vector<int> Lambda;
+            // ============================================================
+            // 1) Lambda_view 按你习惯的语义：0=a,1=b,...(LSB→MSB)
+            // ============================================================
+            vector<int> Lambda_view;      // 用于显示
             for (int i = 0; i < n; i++)
-                if (v[i]) Lambda.push_back(i + 1);
+                if (v[i]) Lambda_view.push_back(i);
 
-            // 构造 swap-chain
-            std::vector<std::vector<stp_data>> chain;
+            // 打印 Λ：对应你的语义
+            cout << "Λ = { ";
+            for (int x : Lambda_view) cout << x << " ";
+            cout << "}";
+
+            // ============================================================
+            // 2) 映射到 STP 公式的坐标：j = n - i
+            //    i = 0..n-1 (LSB→MSB)
+            //    j = 1..n   (MSB→LSB)
+            // ============================================================
+            vector<int> Lambda_j;
+            for (int i : Lambda_view)
+                Lambda_j.push_back(n - i);   // n-i: 1..n
+
+            // 排序：STP 公式要求 j 升序
+            sort(Lambda_j.begin(), Lambda_j.end());
+
+            // ============================================================
+            // 3) 生成 swap-chain（使用 STP 论文公式）
+            // ============================================================
+            vector<vector<stp_data>> chain;
 
             for (int k = s; k >= 1; k--) {
-                int j_k = Lambda[k - 1];
+                int j_k = Lambda_j[k - 1];        // j_k ∈ [1..n]
                 int exp = j_k + (s - 1) - k;
                 chain.push_back(generate_swap_vec(2, 1 << exp));
             }
@@ -290,42 +337,29 @@ static bool factor_once_with_reorder_01(
             auto Mperm  = Vec_chain_multiply(chain, false);
             auto result = Vec_semi_tensor_product(Mf, Mperm);
 
-            std::string reordered;
+            // ============================================================
+            // 4) 取得重排后的真值表
+            // ============================================================
+            string reordered;
             reordered.reserve(len);
             for (size_t i = 1; i < result.size(); i++)
                 reordered.push_back(result[i] ? '1' : '0');
 
-            std::cout << "Λ = { ";
-            for (int j : Lambda) std::cout << j << " ";
-            std::cout << "} -> reordered = " << reordered << "\n";
+            cout << " -> reordered = " << reordered << "\n";
 
+            // ============================================================
+            // 5) 判断分解类型
+            // ============================================================
             int cid = theorem33_case_id(reordered, s);
             if (cid == 0) continue;
 
-            // === 计算新的变量顺序 newOrder ===
-            // Lambda 是选中的变量位置（1-based）
-            std::vector<bool> inLambda(n + 1, false);
-            for (int p : Lambda) inLambda[p] = true;
-
-            std::vector<int> OmegaPos;
-            for (int p = 1; p <= n; ++p)
-                if (!inLambda[p]) OmegaPos.push_back(p);
-
-            // 新 bit 位置顺序：先 Ω，再 Λ
-            std::vector<int> newPos;
-            newPos.reserve(n);
-            for (int p : OmegaPos) newPos.push_back(p);
-            for (int p : Lambda)   newPos.push_back(p);
-
-            std::vector<int> newOrder;
-            newOrder.reserve(n);
-            for (int p : newPos)
-                newOrder.push_back(in.order[p - 1]); // 映射到变量编号
-
-            // === 分块 ===
+            // ============================================================
+            // 6) 基于 block 分割（按原逻辑）
+            // ============================================================
             int bl = 1 << s;
             int nb = len / bl;
-            std::vector<std::string> blocks(nb);
+            vector<string> blocks(nb);
+
             for (int i = 0; i < nb; i++)
                 blocks[i] = reordered.substr(i * bl, bl);
 
@@ -337,7 +371,8 @@ static bool factor_once_with_reorder_01(
                 }
             }
 
-            std::vector<std::pair<std::string,std::string>> S_list;
+            vector<pair<string,string>> S_list;
+
             switch (cid) {
                 case 1: S_list = { {"11","00"}, {"00","11"} }; break;
                 case 2:
@@ -355,66 +390,97 @@ static bool factor_once_with_reorder_01(
 
             auto R = run_case_once(blocks, s, S_list[0].first, S_list[0].second);
 
-            // Mphi 长度 = 2^(n-s)，Mpsi 长度 = 2^s
+            // ============================================================
+            // 7) 计算新变量顺序（关键！映射保持 0→a）
+            // 
+            // STP 的 newPos 是按 “j 的排序”
+            // 我们要把 j 转回 i：i = n - j
+            // ============================================================
             int n_phi = n - s;
             int n_psi = s;
 
-            std::vector<int> phi_order(newOrder.begin(), newOrder.begin() + n_phi);
-            std::vector<int> psi_order(newOrder.begin() + n_phi, newOrder.end());
+            // STP 认为 newPos = [Ω_j , Λ_j]（都是 j 的排序）
+            vector<int> j_Omega;
+            vector<bool> inLambda_j(n + 1,false);
+            for (int j : Lambda_j) inLambda_j[j] = true;
 
-            std::cout << STEP_ID++ << ". MF  = [" << R.MF  << "]\n";
-            std::cout << "   MΦ  = [" << R.Mphi << "]\n";
-            std::cout << "   Mψ  = [" << R.Mpsi << "]\n";
-            std::cout << "   var_order = { ";
-            for (auto x : newOrder) std::cout << x << " ";
-            std::cout << "}\n";
-            std::cout << "   Φ vars = { ";
-            for (auto x : phi_order) std::cout << x << " ";
-            std::cout << "}   Ψ vars = { ";
-            for (auto x : psi_order) std::cout << x << " ";
-            std::cout << "}\n\n";
+            for (int j = 1; j <= n; j++)
+                if (!inLambda_j[j]) j_Omega.push_back(j);
 
-            MF12         = R.MF;
-            phi_tt.f01   = R.Mphi;
-            phi_tt.order = std::move(phi_order);
-            psi_tt.f01   = R.Mpsi;
-            psi_tt.order = std::move(psi_order);
+            // 拼接：Ω + Λ
+            vector<int> newPos_j = j_Omega;
+            newPos_j.insert(newPos_j.end(), Lambda_j.begin(), Lambda_j.end());
+
+            // 映射到 i （0-based LSB→MSB）
+            vector<int> newPos_i;
+            for (int j : newPos_j)
+                newPos_i.push_back(n - j);    // i = n - j
+
+            // 映射到真正的变量编号
+            vector<int> newOrder;
+            for (int i : newPos_i)
+                newOrder.push_back(in.order[i]);
+
+            vector<int> phi_order(newOrder.begin(), newOrder.begin()+n_phi);
+            vector<int> psi_order(newOrder.begin()+n_phi, newOrder.end());
+
+            // 打印
+            cout << STEP_ID++ << ". MF = [" << R.MF << "]\n";
+            cout << "   MΦ = [" << R.Mphi << "]\n";
+            cout << "   Mψ = [" << R.Mpsi << "]\n";
+            cout << "   var_order = { ";
+            for (int x: newOrder) cout << x << " ";
+            cout << "}\n";
+            cout << "   Φ vars = { ";
+            for (int x: phi_order) cout << x << " ";
+            cout << "}  Ψ vars = { ";
+            for (int x: psi_order) cout << x << " ";
+            cout << "}\n\n";
+
+            // 返回
+            MF12          = R.MF;
+            phi_tt.f01    = R.Mphi;
+            phi_tt.order  = phi_order;
+            psi_tt.f01    = R.Mpsi;
+            psi_tt.order  = psi_order;
+
             return true;
 
-        } while (std::prev_permutation(v.begin(), v.end()));
+        } while (prev_permutation(v.begin(), v.end()));
     }
 
     return false;
 }
 
 // =====================================================
-// 主递归 DSD （用 TT）
+// dsd_factor：递归 DSD
 // =====================================================
 static int dsd_factor(const TT& f_raw, int depth = 0)
 {
-    // 先按支持集缩减（同步变量顺序）
     TT f = shrink_to_support(f_raw);
 
-    int len = f.f01.size();
+    int len = (int)f.f01.size();
     if (!is_power_of_two(len) || len <= 4)
         return build_small_tree(f);
 
     std::string MF12;
     TT phi_tt, psi_tt;
+
     if (!factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt))
         return build_small_tree(f);
 
     int L = dsd_factor(phi_tt, depth + 1);
     int R = dsd_factor(psi_tt, depth + 1);
+
     return new_node(MF12, { L, R });
 }
 
 // =====================================================
-// 可选：用数字递归打印 DSD 结构（变量用 1,2,3,... 表示）
+// 打印 DSD（变量数字版）
 // =====================================================
 static void print_dsd_pretty(int id)
 {
-    const DSDNode& nd = NODE_LIST[id - 1];
+    const auto& nd = NODE_LIST[id - 1];
 
     if (nd.func == "in") {
         std::cout << nd.var_id;
@@ -432,10 +498,9 @@ static void print_dsd_pretty(int id)
 
 // =====================================================
 // 顶层入口：run_dsd_recursive
-//   - 输入 binary01 (如从 hex 转出的 01 串，按 a,b,c,d,... 顺序)
-//   - 初始化变量顺序为 {1,2,...,n} 对应 {a,b,...}
-//   - 递归分解，构造 NODE_LIST
-//   - 把最终变量顺序保存到 FINAL_VAR_ORDER
+//  - binary01: 真值表 01 串，按 (a,b,c,...) = (var0,var1,...) 排序
+//  - 初始 order = {0,1,2,...,n-1}
+//  - 最终把 cur.order 复制到 FINAL_VAR_ORDER（目前就是 {0..n-1}）
 // =====================================================
 inline bool run_dsd_recursive(const std::string& binary01)
 {
@@ -446,21 +511,19 @@ inline bool run_dsd_recursive(const std::string& binary01)
 
     int n = static_cast<int>(std::log2(binary01.size()));
 
-    // 打印 bit-level 支持集（原始）
-    auto support_bits = get_support_bits(binary01);
+    auto supp = get_support_bits(binary01);
     std::cout << "support bit indices = { ";
-    for (auto v : support_bits) std::cout << v << " ";
+    for (auto v : supp) std::cout << v << " ";
     std::cout << "}\n";
 
-    // 初始化 TT：变量顺序为 1..n （a,b,c,...）
-    TT root0;
-    root0.f01 = binary01;
-    root0.order.resize(n);
-    for (int i = 0; i < n; ++i)
-        root0.order[i] = i + 1;
+    TT root;
+    root.f01 = binary01;
+    root.order.resize(n);
+    for (int i = 0; i < n; i++)
+        root.order[i] = i;        // 0=a,1=b,...
 
-    std::cout << "初始变量顺序 (1=a,2=b,...) = { ";
-    for (auto x : root0.order) std::cout << x << " ";
+    std::cout << "初始变量顺序 (0=a,1=b,...) = { ";
+    for (int x : root.order) std::cout << x << " ";
     std::cout << "}\n";
 
     NODE_LIST.clear();
@@ -470,25 +533,24 @@ inline bool run_dsd_recursive(const std::string& binary01)
     std::cout << "输入 = " << binary01
               << " (len = " << binary01.size() << ")\n";
 
-    // 用一个可修改副本 top 做递归（支持集缩减会改它的 order）
-    TT top = root0;
-    int root_id = dsd_factor(top);
+    TT cur = root;      // dsd_factor 不会改 cur（参数按 const&）
+    int root_id = dsd_factor(cur);
 
     std::cout << "===== 最终 DSD 节点列表 =====\n";
-    for (auto& nd : NODE_LIST) {
+    for (auto& nd : NODE_LIST)
+    {
         std::cout << nd.id << " = " << nd.func;
-        if (nd.func == "in") {
+        if (nd.func == "in")
             std::cout << "(var=" << nd.var_id << ")";
-        } else if (nd.child.size() == 1) {
+        else if (nd.child.size() == 1)
             std::cout << "(" << nd.child[0] << ")";
-        } else if (nd.child.size() == 2) {
+        else if (nd.child.size() == 2)
             std::cout << "(" << nd.child[0] << "," << nd.child[1] << ")";
-        }
         std::cout << "\n";
     }
 
-    // 保存最终变量顺序（可能已被 shrink_to_support 缩减）
-    FINAL_VAR_ORDER = top.order;
+    // 现在 FINAL_VAR_ORDER = {0,1,...,n-1}
+    FINAL_VAR_ORDER = cur.order;
 
     std::cout << "Root = " << root_id << "\n";
     return true;
