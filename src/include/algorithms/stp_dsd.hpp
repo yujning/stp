@@ -10,10 +10,6 @@ inline int ORIGINAL_VAR_COUNT = 0;
 
 #include "excute.hpp"
 #include "reorder.hpp"
-
-// ================================================
-// kitty truth table
-// ================================================
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/operations.hpp>
 
@@ -67,7 +63,7 @@ static vector<int> get_support_bits(const string& f01)
     for (int i = 0; i < tt.num_vars(); i++){
         if (kitty::has_var(tt, i))
             supp.push_back(i);
-        std::cout <<"i="<<i<<endl;
+        
     }
     return supp;
 }
@@ -86,13 +82,6 @@ static TT shrink_to_support(const TT& in)
 
     int n = tt.num_vars();
     
-    if (supp.size() == n) {
-        cout << "✓ 所有变量都有影响，无需缩减\n\n";
-        return in;
-    }
-    
-    cout << "🔍 检测到的有效变量（Kitty位置 → 你的位置 → 原始变量）：\n";
-    
     // 按Kitty顺序收集
     vector<pair<int, int>> kitty_order_retained;  // {kitty_pos, 原始变量编号}
     for (int kitty_pos : supp) {
@@ -100,21 +89,11 @@ static TT shrink_to_support(const TT& in)
         int original_var = in.order[your_pos - 1];
         kitty_order_retained.push_back({kitty_pos, original_var});
         
-        cout << "   Kitty位置" << kitty_pos << " → 你的位置" << your_pos 
-             << " → 原始变量" << original_var << " ✓\n";
     }
     
     // 按Kitty位置升序排序
     sort(kitty_order_retained.begin(), kitty_order_retained.end(), 
          [](auto& a, auto& b) { return a.first < b.first; });
-    
-    cout << "\n   按Kitty顺序保留的变量：{ ";
-    for (auto& p : kitty_order_retained)
-        cout << p.second << " ";
-    cout << "}（对应Kitty位置 ";
-    for (auto& p : kitty_order_retained)
-        cout << p.first << " ";
-    cout << "）\n";
 
     // 构建缩减后的真值表（直接提取对应位）
     unsigned nv = kitty_order_retained.size();
@@ -139,21 +118,12 @@ static TT shrink_to_support(const TT& in)
     for (uint64_t i = 0; i < out.f01.size(); i++)
         out.f01[i] = kitty::get_bit(new_tt, i) ? '1' : '0';
 
-    cout << "   缩减后的真值表（Kitty顺序）= " << out.f01 << "\n";
 
     // 🔥 转换为STP变量顺序（就是把Kitty顺序反过来）
     out.order.clear();
     for (int i = nv - 1; i >= 0; i--) {
         out.order.push_back(kitty_order_retained[i].second);
     }
-
-    cout << "   对应STP变量顺序：{ ";
-    for (int v : out.order) cout << v << " ";
-    cout << "}（你的位置 ";
-    for (int i = 0; i < (int)nv; i++) 
-        cout << (n - kitty_order_retained[nv-1-i].first) << " ";
-    cout << "）\n";
-    cout << "   STP真值表 = " << out.f01 << " （编码不变）\n\n";
 
     return out;
 }
@@ -253,37 +223,7 @@ static bool is_constant_block_full(const string& b)
     return is_all_zero(b) || is_all_one(b);
 }
 
-// =====================================================
-// 统一分块语义：
-//   - 对 s==1：
-//       * uniq.size()==1: B0
-//           MF  = B0 + B0  （比如 10 -> 1010, 11 -> 1111）
-//           MΦ  = 全 '1'
-//           MΨ  = B0
-//       * uniq.size()==2: B0, B1
-//           MF  = B0 + B1
-//           MΦ[i] = '1' 若 blocks[i]==B0 否则 '0'
-//           MΨ = "10"
-//       * uniq.size()>2: 返回 false
-//   - 对 s>1：
-//       * uniq.size()==1: B0
-//           MF  = B0 + B0
-//           MΦ  = 全 '1'
-//           MΨ  = B0
-//       * uniq.size()==2 且恰好一块常数、一块非常数:
-//           设常数块为 C，非常数块为 W：
-//           若 C 是全 1 → MF = "1101"
-//           若 C 是全 0 → MF = "1110"
-//           MΦ[i] = '1' 若 blocks[i]==C, 否则 '0'
-//           MΨ = W
-//       * 其它情况：返回 false（交给 STP 模板 run_case_once 处理）
-// =====================================================
 
-// =====================================================
-// 求解 s > 1 情况下的 u * MΨ = W
-// u ∈ {01(非),10(恒等)}
-// 优先取 u=01，因为你指定使用“非常数块反转”的 MΨ
-// =====================================================
 static string solve_u_Mpsi_eq_w(const string &W)
 {
     // u = 01 → MΨ = NOT(W)
@@ -454,13 +394,7 @@ static int build_small_tree(const TT& t)
     return new_node(t.f01, {});
 }
 
-// =====================================================
-// factor_once_with_reorder_01
-//   - TT.order[i] = 变量编号（1-based）
-//   - Lambda_j = STP 论文中 j = n-i
-//   - MF/MΦ/MΨ：优先用 derive_block_semantics_general，
-//     若其返回 false，再用 STP 模板 run_case_once
-// =====================================================
+
 static bool factor_once_with_reorder_01(
     const TT& in,
     int depth,
@@ -505,9 +439,7 @@ static bool factor_once_with_reorder_01(
             
             sort(Lambda_j.begin(), Lambda_j.end());
 
-            cout << "Λ = { ";
-            for (int j : Lambda_j) cout << j << " ";
-            cout << "}";
+
 
             // 生成 swap-chain
             vector<vector<stp_data>> chain;
@@ -527,7 +459,7 @@ static bool factor_once_with_reorder_01(
             for (size_t i = 1; i < result.size(); i++)
                 reordered.push_back(result[i] ? '1' : '0');
 
-            cout << " -> reordered = " << reordered << "\n";
+
 
             int cid = theorem33_case_id(reordered, s);
             if (cid == 0) continue;
@@ -612,31 +544,13 @@ static bool factor_once_with_reorder_01(
             vector<int> psi_order_original(newOrder_original.begin() + n_phi, 
                                            newOrder_original.end());
 
-            cout << STEP_ID++ << ". MF = [" << MF_use << "]\n";
-            cout << "   MΦ = [" << Mphi_use << "]\n";
-            cout << "   MΨ = [" << Mpsi_use << "]\n";
-            
-            cout << "   重排详情：\n";
+
             for (int i = 0; i < (int)newPos_j.size(); i++) {
                 int j = newPos_j[i];
                 int orig = in.order[j - 1];
-                cout << "     新位置" << (i+1) << " = 局部编号" << j 
-                     << " → 原始变量" << orig << "\n";
+
             }
             
-            cout << "   新局部顺序 = { ";
-            for (int j : newPos_j) cout << j << " ";
-            cout << "}\n";
-            
-            cout << "   新原始变量顺序 = { ";
-            for (int v : newOrder_original) cout << v << " ";
-            cout << "}\n";
-            
-            cout << "   Φ 原始变量 = { ";
-            for (int v : phi_order_original) cout << v << " ";
-            cout << "}  Ψ 原始变量 = { ";
-            for (int v : psi_order_original) cout << v << " ";
-            cout << "}\n\n";
 
             MF12        = MF_use;
             phi_tt.f01  = Mphi_use;
@@ -674,26 +588,6 @@ static int dsd_factor(const TT& f, int depth=0)
     int n_phi = phi_tt.order.size();
     int n_psi = psi_tt.order.size();
     
-    cout << "📌 递归分解 Φ：原始变量 { ";
-    for (int v : phi_original_vars) cout << v << " ";
-    cout << "} → 局部编号 { ";
-    for (int i = 1; i <= n_phi; i++) cout << i << " ";
-    cout << "}\n";
-    cout << "   映射关系：";
-    for (int i = 0; i < n_phi; i++)
-        cout << "位置" << (i+1) << "→变量" << phi_original_vars[i] << " ";
-    cout << "\n";
-    
-    cout << "📌 递归分解 Ψ：原始变量 { ";
-    for (int v : psi_original_vars) cout << v << " ";
-    cout << "} → 局部编号 { ";
-    for (int i = 1; i <= n_psi; i++) cout << i << " ";
-    cout << "}\n";
-    cout << "   映射关系：";
-    for (int i = 0; i < n_psi; i++)
-        cout << "位置" << (i+1) << "→变量" << psi_original_vars[i] << " ";
-    cout << "\n\n";
-
     int L = dsd_factor(phi_tt, depth+1);
     int R = dsd_factor(psi_tt, depth+1);
 
@@ -720,41 +614,13 @@ inline bool run_dsd_recursive(const std::string& binary01)
     for (int i = 0; i < n; ++i)
         root.order[i] = i + 1;  // 位置 (i+1) 对应变量 (i+1)
 
-    std::cout << "输入 = " << binary01 << " (n=" << n << ")\n";
-    std::cout << "初始映射：";
-    for (int i = 0; i < n; i++)
-        std::cout << "位置" << (i+1) << "→变量" << root.order[i] << " ";
-    std::cout << "\n\n";
-
     NODE_LIST.clear();
     NODE_ID = 1;
     STEP_ID = 1;
     FINAL_VAR_ORDER.clear();
 
-        // 🔥 只在最开始缩减一次
     TT root_shrunk = shrink_to_support(root);
     int root_id = dsd_factor(root_shrunk);  // 递归中不再缩减
-
-    //int root_id = dsd_factor(root);
-
-    std::cout << "===== 最终 DSD 节点列表 =====\n";
-    for (auto& nd : NODE_LIST)
-    {
-        std::cout << nd.id << " = " << nd.func;
-        if (nd.func == "in")
-            std::cout << "(var=" << nd.var_id << ")";
-        else if (nd.child.size() == 1)
-            std::cout << "(" << nd.child[0] << ")";
-        else if (nd.child.size() == 2)
-            std::cout << "(" << nd.child[0] << "," << nd.child[1] << ")";
-        std::cout << "\n";
-    }
-
-    std::cout << "Root = " << root_id << "\n";
-
-    std::cout << "FINAL_VAR_ORDER = { ";
-    for (int v : FINAL_VAR_ORDER) std::cout << v << " ";
-    std::cout << "}\n";
 
     return true;
 }
