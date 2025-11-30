@@ -414,11 +414,13 @@ static bool factor_once_with_reorder_01(
 
     vector<int> s_order;
     if (r >= 2) {
+        s_order.reserve(r);
         s_order.push_back(2);
         for (int s = 1; s <= r; s++)
             if (s != 2) s_order.push_back(s);
     }
     else {
+        s_order.reserve(r);
         for (int s = 1; s <= r; s++)
             s_order.push_back(s);
     }
@@ -429,20 +431,16 @@ static bool factor_once_with_reorder_01(
         fill(v.begin(), v.begin() + s, true);
 
         do {
-            vector<int> Lambda_bits;
-            for (int i = 0; i < n; i++)
-                if (v[i]) Lambda_bits.push_back(i);
-
             vector<int> Lambda_j;
-            for (int bit : Lambda_bits)
-                Lambda_j.push_back(n - bit);
+            Lambda_j.reserve(s);
+            for (int i = n - 1; i >= 0; i--)
+                if (v[i]) Lambda_j.push_back(n - i);
             
             sort(Lambda_j.begin(), Lambda_j.end());
 
-
-
             // 生成 swap-chain
             vector<vector<stp_data>> chain;
+            chain.reserve(s + 1);
 
             for (int k = s; k >= 1; k--) {
                 int j_k = Lambda_j[k - 1];
@@ -454,12 +452,10 @@ static bool factor_once_with_reorder_01(
             auto Mperm  = Vec_chain_multiply(chain, false);
             auto result = Vec_semi_tensor_product(Mf, Mperm);
 
-            string reordered;
-            reordered.reserve(len);
-            for (size_t i = 1; i < result.size(); i++)
-                reordered.push_back(result[i] ? '1' : '0');
-
-
+            // 🔥 优化：预分配字符串
+            string reordered(len, '0');
+            for (size_t i = 0; i < len; i++)
+                reordered[i] = result[i + 1] ? '1' : '0';
 
             int cid = theorem33_case_id(reordered, s);
             if (cid == 0) continue;
@@ -471,21 +467,17 @@ static bool factor_once_with_reorder_01(
             for (int i = 0; i < nb; i++)
                 blocks[i] = reordered.substr(i * bl, bl);
 
-            // 1) 先尝试你要求的“分块语义版”生成 MF / MΦ / MΨ
             string MFb, Mphib, Mpsib;
             bool ok_block = derive_block_semantics_general(blocks, s, MFb, Mphib, Mpsib);
 
             string MF_use, Mphi_use, Mpsi_use;
 
-            if (ok_block)
-            {
+            if (ok_block) {
                 MF_use   = MFb;
                 Mphi_use = Mphib;
                 Mpsi_use = Mpsib;
             }
-            else
-            {
-                // 2) 分块语义不适用时，用 STP 模板 run_case_once
+            else {
                 bool has1 = false, has0 = false;
                 for (auto& b : blocks) {
                     if (is_constant_block(b)) {
@@ -496,21 +488,15 @@ static bool factor_once_with_reorder_01(
 
                 vector<pair<string,string>> S_list;
                 switch (cid) {
-                    case 1: S_list = { {"11","00"}, {"00","11"} }; break;
+                    case 1: S_list = { {"11","00"} }; break;
                     case 2:
                         if (has1)
-                            S_list = {
-                                {"11","10"}, {"11","01"},
-                                {"10","11"}, {"01","11"}
-                            };
+                            S_list = { {"11","10"} };
                         else
-                            S_list = {
-                                {"00","10"}, {"00","01"},
-                                {"10","00"}, {"01","00"}
-                            };
+                            S_list = { {"00","10"} };
                         break;
-                    case 3: S_list = { {"10","10"}, {"01","01"} }; break;
-                    case 4: S_list = { {"10","01"}, {"01","10"} }; break;
+                    case 3: S_list = { {"10","10"} }; break;
+                    case 4: S_list = { {"10","01"} }; break;
                     case 5: return false;
                 }
 
@@ -521,42 +507,31 @@ static bool factor_once_with_reorder_01(
                 Mpsi_use = R.Mpsi;
             }
 
-            // 🔥 统一的后处理：重排变量顺序、填 TT
+            // 🔥 优化：直接构造而非拷贝
             int n_phi = n - s;
 
-            vector<bool> inLam_j(n + 1, false);
-            for (int j : Lambda_j) inLam_j[j] = true;
-
+            // 构造 Omega_j（不在 Lambda 中的编号）
             vector<int> Omega_j;
+            Omega_j.reserve(n_phi);
+            vector<bool> inLam(n + 1, false);
+            for (int j : Lambda_j) inLam[j] = true;
             for (int j = 1; j <= n; j++)
-                if (!inLam_j[j]) Omega_j.push_back(j);
+                if (!inLam[j]) Omega_j.push_back(j);
 
-            vector<int> newPos_j = Omega_j;
-            newPos_j.insert(newPos_j.end(), Lambda_j.begin(), Lambda_j.end());
+            // 🔥 直接构造 phi_tt.order 和 psi_tt.order
+            phi_tt.order.clear();
+            phi_tt.order.reserve(n_phi);
+            for (int j : Omega_j)
+                phi_tt.order.push_back(in.order[j - 1]);
 
-            vector<int> newOrder_original;
-            for (int j : newPos_j) {
-                newOrder_original.push_back(in.order[j - 1]);
-            }
+            psi_tt.order.clear();
+            psi_tt.order.reserve(s);
+            for (int j : Lambda_j)
+                psi_tt.order.push_back(in.order[j - 1]);
 
-            vector<int> phi_order_original(newOrder_original.begin(), 
-                                           newOrder_original.begin() + n_phi);
-            vector<int> psi_order_original(newOrder_original.begin() + n_phi, 
-                                           newOrder_original.end());
-
-
-            for (int i = 0; i < (int)newPos_j.size(); i++) {
-                int j = newPos_j[i];
-                int orig = in.order[j - 1];
-
-            }
-            
-
-            MF12        = MF_use;
-            phi_tt.f01  = Mphi_use;
-            psi_tt.f01  = Mpsi_use;
-            phi_tt.order= phi_order_original;
-            psi_tt.order= psi_order_original;
+            MF12        = std::move(MF_use);
+            phi_tt.f01  = std::move(Mphi_use);
+            psi_tt.f01  = std::move(Mpsi_use);
 
             return true;
 
@@ -565,7 +540,6 @@ static bool factor_once_with_reorder_01(
 
     return false;
 }
-
 // dsd_factor - 递归 DSD 分解
 // =====================================================
 static int dsd_factor(const TT& f, int depth=0)
