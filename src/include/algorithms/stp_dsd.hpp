@@ -391,7 +391,19 @@ static int build_small_tree(const TT& t)
         return new_node(t.f01, { a, b });
     }
 
-    return new_node(t.f01, {});
+    // ⭐ 修复编号：如果不是 1bit/2bit，就要递归建子树，而不能直接返回空 children
+    std::vector<int> child_ids;
+    for (int i = 0; i < nv; i++)
+    {
+        int var_id = t.order[i];
+        int leaf = new_in_node(var_id);
+        child_ids.push_back(leaf);
+        if (!count(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id))
+            FINAL_VAR_ORDER.push_back(var_id);
+    }
+
+    // 这个节点拥有 nv 个输入，所以 child 列表必须列出所有变量
+    return new_node(t.f01, child_ids);
 }
 
 
@@ -411,19 +423,51 @@ static bool factor_once_with_reorder_01(
     int r = n / 2;
 
     auto Mf = binary_to_vec(bin);
-
+    
+    //先分S=2
+    // vector<int> s_order;
+    // if (r >= 2) {
+    //     s_order.push_back(2);
+    //     for (int s = 1; s <= r; s++)
+    //         if (s != 2) s_order.push_back(s);
+    // }
+    //     else {
+    //     for (int s = 1; s <= r; s++)
+    //         s_order.push_back(s);
+    // }
+    
+    //s从n/2开始
     vector<int> s_order;
-    if (r >= 2) {
-        s_order.reserve(r);
-        s_order.push_back(2);
-        for (int s = 1; s <= r; s++)
-            if (s != 2) s_order.push_back(s);
-    }
-    else {
-        s_order.reserve(r);
-        for (int s = 1; s <= r; s++)
-            s_order.push_back(s);
-    }
+    s_order.reserve(r);
+    for (int s = r; s >= 1; --s)
+        s_order.push_back(s);
+    ////
+
+
+    //偶数从[n/2]-1开始，奇数从n/2开始
+
+    // vector<int> s_order;
+    // s_order.reserve(r);
+
+    // if (n % 2 == 0) {
+    //     // 偶数：先从 n/2-1 开始
+    //     int h = r; // h = n/2
+    //     if (h - 1 >= 1)
+    //         s_order.push_back(h - 1);  // 第一个：n/2 - 1
+
+    //     // 然后 n/2
+    //     if (h >= 1)
+    //         s_order.push_back(h);      // 第二个：n/2
+
+    //     // 然后从 n/2-2 开始一直往下扫：n/2-2, n/2-3, ..., 1
+    //     for (int s = h - 2; s >= 1; --s)
+    //         s_order.push_back(s);
+    // } else {
+    //     // 奇数：从 floor(n/2) 开始往下：floor(n/2), floor(n/2)-1, ..., 1
+    //     for (int s = r; s >= 1; --s)
+    //         s_order.push_back(s);
+    // }
+    /////////
 
     for (int s : s_order)
     {
