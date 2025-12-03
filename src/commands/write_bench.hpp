@@ -18,29 +18,43 @@ namespace alice
 {
 
 // ========================================================
-// 映射变量编号 → 字母：最大编号 → 'a'
-// 变量1是最高位，所以编号越大，字母越靠前
-// 例：n=4 时，4→'a', 3→'b', 2→'c', 1→'d'
+// 变量编号 → 字母
+// varN → 'a', var(N-1) → 'b', …
 // ========================================================
 static std::string varname_from_id(int v)
 {
     int maxv = ORIGINAL_VAR_COUNT;
-    int offset = maxv - v;      // v=max → offset=0 → 'a'
-    return std::string(1, char('a' + offset));
+    return std::string(1, char('a' + (maxv - v)));
 }
 
-
 // ========================================================
-// 二进制转 hex
+// 安全二进制转 hex（任意长度，不会崩）
 // ========================================================
 static std::string bin_to_hex(const std::string& bin)
 {
-    int v = std::stoi(bin, nullptr, 2);
-    char buf[32];
-    sprintf(buf, "%x", v);
-    return std::string(buf);
-}
+    std::string b = bin;
 
+    while (b.size() % 4 != 0)
+        b = "0" + b;
+
+    static const char* hex_map = "0123456789abcdef";
+    std::string hex;
+    hex.reserve(b.size() / 4);
+
+    for (size_t i = 0; i < b.size(); i += 4)
+    {
+        int v = (b[i] - '0') * 8 +
+                (b[i+1] - '0') * 4 +
+                (b[i+2] - '0') * 2 +
+                (b[i+3] - '0');
+        hex.push_back(hex_map[v]);
+    }
+
+    while (hex.size() > 1 && hex[0] == '0')
+        hex.erase(hex.begin());
+
+    return hex;
+}
 
 // ========================================================
 // write_bench
@@ -84,8 +98,7 @@ protected:
         }
 
         // ====================================================
-        // 1) 输入变量：输出所有变量 1 到 n
-        //    按从大到小输出（最大编号 → 'a' 先输出）
+        // 1) 输入变量
         // ====================================================
         for (int v = ORIGINAL_VAR_COUNT; v >= 1; v--)
             fout << "INPUT(" << varname_from_id(v) << ")\n";
@@ -113,41 +126,39 @@ protected:
         name_of[root_id] = "F0";
 
         // ====================================================
-        // 3) 输出 LUT
-        //    双输入：左右互换
+        // 3) 输出 LUT（🔥 全部 child 顺序反转！）
         // ====================================================
         for (auto &n : NODE_LIST)
         {
-            if (n.func == "in") continue;
+            if (n.func == "in")
+                continue;
 
             fout << name_of[n.id] << " = LUT 0x"
                  << bin_to_hex(n.func) << " (";
 
-            int cnt = n.child.size();
+            // ⭐⭐⭐ 关键：反转 child 顺序，无条件统一
+            std::vector<int> rev = n.child;
+            std::reverse(rev.begin(), rev.end());
 
-            if (cnt == 2)
+            for (size_t i = 0; i < rev.size(); i++)
             {
-                fout << name_of[n.child[1]] << ", "
-                     << name_of[n.child[0]];
-            }
-            else
-            {
-                for (int i = 0; i < cnt; i++)
-                {
-                    fout << name_of[n.child[i]];
-                    if (i + 1 < cnt) fout << ", ";
-                }
+                fout << name_of[rev[i]];
+                if (i + 1 < rev.size())
+                    fout << ", ";
             }
 
             fout << ")\n";
         }
 
-        std::cout << "✅ BENCH written to " << filename << "\n";
-        
-        // 🔥 打印变量映射
+        // ====================================================
+        // Done
+        // ====================================================
+        std::cout << "✅ BENCH written to " << filename << "\n\n";
+
         std::cout << "📋 变量映射（最高位→'a'）：\n";
         for (int v = ORIGINAL_VAR_COUNT; v >= 1; v--)
-            std::cout << "   变量" << v << " → '" << varname_from_id(v) << "'\n";
+            std::cout << "   变量" << v << " → '" 
+                      << varname_from_id(v) << "'\n";
     }
 
 private:
