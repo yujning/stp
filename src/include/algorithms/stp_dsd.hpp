@@ -491,15 +491,10 @@ static bool factor_once_with_reorder_01(
     auto Mf = binary_to_vec(bin);
 
     vector<int> s_order;
-    if (r >= 2) {
-        s_order.push_back(2);
-        for (int s = 1; s <= r; s++)
-            if (s != 2) s_order.push_back(s);
-    }
-    else {
-        for (int s = 1; s <= r; s++)
-            s_order.push_back(s);
-    }
+    s_order.reserve(r);
+    for (int s = r; s >= 1; --s)
+        s_order.push_back(s);
+        
 
     for (int s : s_order)
     {
