@@ -26,7 +26,7 @@ endif()
 include_directories(/usr/local/include/eigen3)
 
 # Options
-option(TEST "Build tests" OFF)
+option(TEST "Build tests" ON)
 
 add_compile_options(-g -O3)
 

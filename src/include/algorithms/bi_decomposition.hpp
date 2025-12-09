@@ -3,20 +3,24 @@
 #include <string>
 #include <iostream>
 #include <cmath>
+#include <set>
+#include <kitty/kitty.hpp>
+#include "excute.hpp"
 #include "reorder.hpp"
 #include "stp_dsd.hpp"
 
 using std::string;
 using std::vector;
+using std::set;
 
 // =====================================================
 // BiDecompResult
 // =====================================================
 struct BiDecompResult {
     int k1, k2, k3;
-    vector<int> Gamma;
-    vector<int> Theta;
-    vector<int> Lambda;
+    vector<int> Gamma;   // 原始变量编号
+    vector<int> Theta;   // 原始变量编号
+    vector<int> Lambda;  // 原始变量编号
     string F01;
     TT phi_tt;
     TT psi_tt;
@@ -78,91 +82,183 @@ static void print_structure_matrix(
 }
 
 
+static string reverse_bits(const string& s)
+{
+    string r = s;
+    std::reverse(r.begin(), r.end());
+    return r;
+}
 
-// 根据公式(34)进行真值表重排
-static string apply_variable_reordering(
+//kitty重排的真值表
+
+// =====================================================
+// ★ 使用交换矩阵 SWAP 实现变量重排：按 new_order = Γ + Θ + Λ
+// =====================================================
+// =====================================================
+// ⭐ 变量重排（使用交换矩阵链 W，满足 W · target = 标准顺序）
+// target = Γ,Θ,Λ 拼接成的序列，如 {3,4,1,2}
+// =====================================================
+static string apply_variable_reordering_swap(
     const string& f01,
     int n,
-    const vector<int>& Gamma_indices,  // 1-based
-    const vector<int>& Theta_indices,  // 1-based
-    const vector<int>& Lambda_indices, // 1-based
+    const vector<int>& Gamma_indices,
+    const vector<int>& Theta_indices,
+    const vector<int>& Lambda_indices,
     int k1, int k2, int k3)
 {
-    // 将 f01 转换为向量形式
+    // ---------- 1. 目标序列 ----------
+    vector<int> target;
+    for (int x : Gamma_indices) target.push_back(x);
+    for (int x : Theta_indices) target.push_back(x);
+    for (int x : Lambda_indices) target.push_back(x);
+
+    cout << "🔁 构造交换矩阵链（冒泡法）:\n";
+    cout << "  起始序列（目标序列）: ";
+    for (int v : target) cout << v << " ";
+    cout << "\n  终点序列: 1 2 3 ... " << n << "\n";
+
+    // 当前序列（要不断被冒泡变成 1,2,3,...,n）
+    vector<int> cur = target;
+
+    // ---------- 2. 构造 W-chain ----------
+    vector<vector<stp_data>> W_chain;
+
+    // 按从大到小变量冒泡（你要求的方式）
+    for (int var = n; var >= 1; --var)
+    {
+        // 找 var 在当前序列中的位置
+        int pos = -1;
+        for (int i = 0; i < n; i++)
+            if (cur[i] == var) { pos = i; break; }
+
+        if (pos == -1) {
+            cout << "  ⚠️ 未找到变量 " << var << "\n";
+            continue;
+        }
+
+        // 已在第一位则跳过
+        if (pos == 0) {
+            cout << "  • 变量 " << var << " 已在第一位，跳过\n";
+            continue;
+        }
+
+        // 需要跨过 pos 个元素
+        int d = pos;               // 变量移动距离
+        int P = (1 << d);          // W[P,2]
+        int Q = 2;
+
+        cout << "  • W[" << P << ", " << Q << "] : 把变量 " << var
+             << " 从位置 " << (pos+1)
+             << " 移到第一位\n";
+
+        cout << "    当前序列: ";
+        for (int v : cur) cout << v << " ";
+
+        // 记录该 W
+        W_chain.push_back(generate_swap_vec(P, Q));
+
+        // 在序列上执行冒泡（把 cur[pos] 挪到 index 0）
+        int temp = cur[pos];
+        for (int j = pos; j > 0; j--)
+            cur[j] = cur[j - 1];
+        cur[0] = temp;
+
+        cout << " → ";
+        for (int v : cur) cout << v << " ";
+        cout << "\n";
+    }
+
+    cout << "🔚 冒泡结束，最终序列: ";
+    for (int v : cur) cout << v << " ";
+    cout << "（应为 1 2 3 4 ...）\n";
+
+    // ---------- 3. 正确的矩阵乘法顺序：W_last · ... · W1 ----------
+    cout << "📌 最终交换矩阵链 W = ";
+    for (int i = W_chain.size(); i >= 1; --i)
+    {
+        cout << "W" << i;
+        if (i > 1) cout << " · ";
+    }
+    cout << "\n";
+
+    // ⭐ Reverse：因为 Vec_chain_multiply 是按 chain[0]·chain[1]·… 乘
+    reverse(W_chain.begin(), W_chain.end());
+
+    cout << "📌 原始真值表 × (W_last · ... · W1) = 重排真值表\n\n";
+
+    // ---------- 4. 执行矩阵链 ----------
     vector<stp_data> Mf = binary_to_vec(f01);
+    vector<stp_data> Mperm = Vec_chain_multiply(W_chain, false);
+    vector<stp_data> R = Vec_semi_tensor_product(Mf, Mperm);
 
-    // 构造交换矩阵链（从右到左按公式34的顺序）
-    vector<vector<stp_data>> swap_chain;
+    // ---------- 5. 转为字符串 ----------
+    string out;
+    out.reserve(R.size() - 1);
+    for (size_t i = 1; i < R.size(); ++i)
+        out.push_back(R[i] ? '1' : '0');
 
-    // 第一部分：W[2^k1, 2^k2]
-    swap_chain.push_back(generate_swap_vec(std::pow(2, k1), std::pow(2, k2)));
+    cout << "📌 重排后的 f01（二进制） = " << out << "\n\n";
 
-    // 第二部分：⊗_{i=k2}^1 W[2, 2^{j_i+(k2-1)-i}]
-    for (int i = k2; i >= 1; --i)
-    {
-        int j_i = Theta_indices[i - 1];  // Θ 的第 i 个变量（1-based）
-        int exp = j_i + (k2 - 1) - i;
-        swap_chain.push_back(generate_swap_vec(2, std::pow(2, exp)));
-    }
-
-    // 第三部分：W[2^{k1+k2}, 2^k3]
-    swap_chain.push_back(generate_swap_vec(std::pow(2, k1 + k2), std::pow(2, k3)));
-
-    // 第四部分：⊗_{i=k3}^1 W[2, 2^{j_i+(k3-1)-i}]
-    for (int i = k3; i >= 1; --i)
-    {
-        int j_i = Lambda_indices[i - 1];  // Λ 的第 i 个变量（1-based）
-        int exp = j_i + (k3 - 1) - i;
-        swap_chain.push_back(generate_swap_vec(2, std::pow(2, exp)));
-    }
-
-    // 矩阵链乘法
-    vector<stp_data> Mperm = Vec_chain_multiply(swap_chain, false);
-    vector<stp_data> result = Vec_semi_tensor_product(Mf, Mperm);
-
-    // 转换回字符串（跳过第一个维度元素）
-    string reordered;
-    for (size_t i = 1; i < result.size(); ++i)
-        reordered.push_back(result[i] ? '1' : '0');
-
-    return reordered;
+    return out;
 }
 
-// u 作用在一个长度为 B 的块 P 上：
-// "10" -> 恒等  (返回 P)
-// "01" -> 取反  (返回 ~P)
-// "00" -> 全 0
-// "11" -> 全 1
-static string apply_u_to_block(const string& P, const string& u)
-{
-    if (u == "10")
-    {
-        // 单位矩阵：uM = M
-        return P;
-    }
-    else if (u == "01")
-    {
-        // 反对角：uM = ~M
-        string Q = P;
-        for (char &ch : Q)
-            ch = (ch == '0' ? '1' : '0');
-        return Q;
-    }
-    else if (u == "00")
-    {
-        // 选第二行：全 0
-        return string(P.size(), '0');
-    }
-    else if (u == "11")
-    {
-        // 两行都是 1：全 1
-        return string(P.size(), '1');
-    }
-    // 理论上不会到这里
-    return P;
-}
+// =====================================================
+// 根据公式(34)进行真值表重排
+//   Gamma_indices / Theta_indices / Lambda_indices 是位置（1-based）
+//   真值表按“位置”排列，变量编号始终由 TT.order 保存
+// =====================================================
+// static string apply_variable_reordering(
+//     const string& f01,
+//     int n,
+//     const vector<int>& Gamma_indices,  // 1-based positions
+//     const vector<int>& Theta_indices,  // 1-based positions
+//     const vector<int>& Lambda_indices, // 1-based positions
+//     int k1, int k2, int k3)
+// {
+//     // 将 f01 转换为向量形式
+//     vector<stp_data> Mf = binary_to_vec(f01);
 
+//     // 构造交换矩阵链（从右到左按公式34的顺序）
+//     vector<vector<stp_data>> swap_chain;
 
+//     // 第一部分：W[2^k1, 2^k2]
+//     swap_chain.push_back(generate_swap_vec(std::pow(2, k1), std::pow(2, k2)));
+
+//     // 第二部分：⊗_{i=k2}^1 W[2, 2^{j_i+(k2-1)-i}]
+//     for (int i = k2; i >= 1; --i)
+//     {
+//         int j_i = Theta_indices[i - 1];  // 位置
+//         int exp = j_i + (k2 - 1) - i;
+//         swap_chain.push_back(generate_swap_vec(2, std::pow(2, exp)));
+//     }
+
+//     // 第三部分：W[2^{k1+k2}, 2^k3]
+//     swap_chain.push_back(generate_swap_vec(std::pow(2, k1 + k2), std::pow(2, k3)));
+
+//     // 第四部分：⊗_{i=k3}^1 W[2, 2^{j_i+(k3-1)-i}]
+//     for (int i = k3; i >= 1; --i)
+//     {
+//         int j_i = Lambda_indices[i - 1];  // 位置
+//         int exp = j_i + (k3 - 1) - i;
+//         swap_chain.push_back(generate_swap_vec(2, std::pow(2, exp)));
+//     }
+
+//     // 矩阵链乘法
+//     vector<stp_data> Mperm = Vec_chain_multiply(swap_chain, false);
+//     vector<stp_data> result = Vec_semi_tensor_product(Mf, Mperm);
+
+//     // 转换回字符串（跳过第一个维度元素）
+//     string reordered;
+//     for (size_t i = 1; i < result.size(); ++i)
+//         reordered.push_back(result[i] ? '1' : '0');
+
+//     return reordered;
+// }
+
+// =====================================================
+// 针对给定 k1,k2,k3，在当前 TT (in) 上尝试一次分解
+//   注意：in.order 里存的是“原始变量编号”，顺序是 Γ,Θ,Λ
+// =====================================================
 static vector<BiDecompResult>
 enumerate_one_case(const TT& in, int k1, int k2, int k3)
 {
@@ -175,36 +271,39 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
     if ((int)in.order.size() != n) return results;
     if (k1 + k2 + k3 != n) return results;
 
+    // 对称剪枝：Γ 和 Λ 等大的时候用首变量比较
     if (k1 == k3)
     {
-        int gamma_first = in.order[0];           
-        int lambda_first = in.order[k1 + k2];    
-        
+        int gamma_first  = in.order[0];
+        int lambda_first = in.order[k1 + k2];
+
         if (gamma_first > lambda_first)
-        {
             return results;
-        }
     }
 
     int R = 1 << k1;
     int C = 1 << k2;
     int B = 1 << k3;
 
-    auto is_const_block = [&](const string& b){
+    auto is_const_block2 = [&](const string& b){
         if (b.empty()) return false;
         for (char c : b)
             if (c != b[0]) return false;
         return true;
     };
 
-    auto is_complement = [&](const string& a, const string& b){
+    auto is_complement2 = [&](const string& a, const string& b){
         if (a.size() != b.size()) return false;
         for (size_t i = 0; i < a.size(); ++i)
             if (a[i] == b[i]) return false;
         return true;
     };
 
+
+    const string& f01_used = f01;
+
     // 1) 构造块矩阵 Mf: blk[r][c]
+   // 1) 构造块矩阵 Mf: blk[r][c]
     vector<vector<string>> blk(R, vector<string>(C));
     for (int r = 0; r < R; ++r)
         for (int c = 0; c < C; ++c)
@@ -213,7 +312,7 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
             for (int l = 0; l < B; ++l)
             {
                 int idx = (r << (k2+k3)) | (c << k3) | l;
-                s.push_back(f01[idx]);
+                s.push_back(f01_used[idx]);
             }
             blk[r][c] = s;
         }
@@ -231,7 +330,7 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
     for (int c = 0; c < C; ++c)
     {
         ColType ct{true, {}, {}};
-        
+
         auto push_unique = [&](vector<string>& v, const string& s){
             for (auto &x : v) if (x == s) return;
             v.push_back(s);
@@ -240,9 +339,9 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
         for (int r = 0; r < R; ++r)
         {
             const string &b = blk[r][c];
-            if (is_const_block(b)) 
+            if (is_const_block2(b))
                 push_unique(ct.const_blocks, b);
-            else                   
+            else
                 push_unique(ct.nonconst_blocks, b);
         }
 
@@ -266,7 +365,7 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
         {
             // 一种常数 + 一种非常数 ✓
         }
-        else if (nc == 2 && cc == 0 && is_complement(ct.nonconst_blocks[0], ct.nonconst_blocks[1]))
+        else if (nc == 2 && cc == 0 && is_complement2(ct.nonconst_blocks[0], ct.nonconst_blocks[1]))
         {
             // 互补非常数对 ✓
         }
@@ -289,7 +388,7 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
         const auto &ct = cols[c];
         int nc = (int)ct.nonconst_blocks.size();
         int cc = (int)ct.const_blocks.size();
-        
+
         if (nc == 2 && cc == 0)
         {
             // 互补对：强制需要 10 和 01
@@ -300,7 +399,7 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
         {
             // 混合列：需要 非常数u + 对应常数u
             required_u.insert("10");  // 默认用10处理非常数块
-            
+
             string const_val = ct.const_blocks[0];
             if (const_val == string(B, '1'))
                 required_u.insert("11");
@@ -320,44 +419,39 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
         const auto &ct = cols[c];
         int nc = (int)ct.nonconst_blocks.size();
         int cc = (int)ct.const_blocks.size();
-        
+
         if (nc == 0 && cc == 1)
         {
             // 单一常数块的纯常数列
-            // 任意2种u都可以覆盖，如果已经有2种u就不需要添加
             if (required_u.size() < 2)
             {
                 string const_val = ct.const_blocks[0];
                 if (const_val == string(B, '1'))
                     required_u.insert("11");
-                else
+                else if (const_val == string(B, '0'))
                     required_u.insert("00");
             }
         }
         else if (nc == 0 && cc == 2)
         {
             // 两种常数块的纯常数列
-            // 如果已经有2种u，可以尝试用现有u覆盖
-            // 否则需要添加常数u
             if (required_u.size() < 2)
             {
-                // 需要补充u
                 for (const string& b : ct.const_blocks)
                 {
                     if (b == string(B, '0'))
                         required_u.insert("00");
                     else if (b == string(B, '1'))
                         required_u.insert("11");
-                    
+
                     if (required_u.size() >= 2) break;
                 }
             }
-            // 如果已经有2种u，纯常数列可以被任意2种u覆盖
         }
     }
 
     vector<string> u_types(required_u.begin(), required_u.end());
-    
+
     // 4) 检查是否可分解
     if (u_types.size() > 2)
     {
@@ -366,10 +460,9 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
         std::cout << "）\n";
         return results;
     }
-    
+
     if (u_types.empty())
     {
-        // 不应该发生
         return results;
     }
 
@@ -385,91 +478,65 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
         global_u1 = u_types[0];
         global_u2 = global_u1;  // 只有1种u，重复使用
     }
-    else
-    {
-        return results;
-    }
 
     // 6) 构造 F
     string F01;
     if (u_types.size() == 2)
-    {
         F01 = global_u1 + global_u2;
-    }
     else
-    {
         F01 = global_u1 + global_u1;
-    }
 
-     // 7+8) 利用全局 u1, u2，同步构造 φ-table 和 ψ-table
-    vector<int> phi_bits(R * C, 0);
-    vector<int> psi_bits(C * B, 0);
+    // =================================================================
+    // 7) ★★ 用严格 u·Mψ=W 规则重算 φ-table & ψ-table（替换你原来的 heuristic）
+    // =================================================================
 
-    auto blocks_equal = [&](const string& a, const string& b) {
-        return a == b;
+    // u 作用在列向量 P 上：支持 10,01,11,00 四种
+    auto mul_u = [&](const string& u, const string& P)->string {
+        if (u == "10") return P;                      // 恒等
+        if (u == "01") {                              // 取反
+            string out = P;
+            for (char &c : out) c = (c=='0' ? '1' : '0');
+            return out;
+        }
+        if (u == "11") return string(P.size(), '1');  // 常 1
+        if (u == "00") return string(P.size(), '0');  // 常 0
+        return P;
     };
+
+    // 按列存 Mψ，每列一个长度为 B 的字符串
+    vector<string> Mpsi_cols(C);
+    // φ 是 R×C 的 0/1 表
+    vector<vector<int>> phi_mat(R, vector<int>(C, 0));
 
     for (int c = 0; c < C; ++c)
     {
-        // 收集这一列所有不同的块 W_r
-        vector<string> distinct_blocks;
-        auto add_unique = [&](const string& s) {
-            if (std::find(distinct_blocks.begin(), distinct_blocks.end(), s) 
-                == distinct_blocks.end())
-            {
-                distinct_blocks.push_back(s);
-            }
-        };
-
+        // 这一列所有块
+        vector<string> col_blocks(R);
         for (int r = 0; r < R; ++r)
-            add_unique(blk[r][c]);
+            col_blocks[r] = blk[r][c];
 
-        // 为这一列构造候选的 ψ 列向量 P
-        vector<string> candidate_P;
-        auto add_candidate = [&](const string& s) {
-            if (std::find(candidate_P.begin(), candidate_P.end(), s) 
-                == candidate_P.end())
-            {
-                candidate_P.push_back(s);
-            }
-        };
-
-        // 把出现过的块加进候选
-        for (const string& w : distinct_blocks)
-            add_candidate(w);
-
-        // 加上全 0 / 全 1
-        string all0(B, '0'), all1(B, '1');
-        add_candidate(all0);
-        add_candidate(all1);
-
-        // 非常数块再加上它的补
-        for (const string& w : distinct_blocks)
+        // 候选 P：这一列出现过的所有块去重
+        vector<string> candidates;
+        for (auto &b : col_blocks)
         {
-            if (!is_const_block(w))
-            {
-                string comp = w;
-                for (char &ch : comp)
-                    ch = (ch == '0' ? '1' : '0');
-                add_candidate(comp);
-            }
+            if (std::find(candidates.begin(), candidates.end(), b) == candidates.end())
+                candidates.push_back(b);
         }
 
-        bool foundP = false;
-        string chosenP;
+        bool solved = false;
+        string chosen_P;
 
-        // 尝试每一个候选 P，看是否能用 (u1, u2) 解释这一列的所有块
-        for (const string& P : candidate_P)
+        // 尝试每一个候选 P 作为 Mψ 列向量
+        for (auto &P : candidates)
         {
             bool ok = true;
 
-            // 预先算好 u1P, u2P
-            string u1P = apply_u_to_block(P, global_u1);
-            string u2P = apply_u_to_block(P, global_u2);
-
-            for (const string& W : distinct_blocks)
+            for (auto &W : col_blocks)
             {
-                if (!blocks_equal(W, u1P) && !blocks_equal(W, u2P))
+                string g1 = mul_u(global_u1, P);
+                string g2 = mul_u(global_u2, P);
+
+                if (W != g1 && W != g2)
                 {
                     ok = false;
                     break;
@@ -478,52 +545,53 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
 
             if (ok)
             {
-                foundP = true;
-                chosenP = P;
+                solved = true;
+                chosen_P = P;
                 break;
             }
         }
 
-        if (!foundP)
+        if (!solved)
         {
-            std::cout << "  ✘ 列 " << c << " 在给定全局 u 下无法找到合适的 ψ 和 φ\n";
-            return results;   // 这个 (k1,k2,k3) / 变量划分失败
+            std::cout << "  ⚠️  列 " << c 
+                      << " 无法找到统一的 Mψ 使得所有块都来自 {u1,u2}·Mψ，判定该 (k1,k2,k3) 不可分解\n";
+            return results;
         }
 
-        // 填 ψ：这一列对应的 ψ 列向量就是 chosenP
-        for (int l = 0; l < B; ++l)
-            psi_bits[c*B + l] = (chosenP[l] == '1') ? 1 : 0;
+        // 选定这一列的 Mψ
+        Mpsi_cols[c] = chosen_P;
 
-        // 填 φ：对于每一行，看它的块等于 u1P 还是 u2P 来决定 φ 位
-        string u1P = apply_u_to_block(chosenP, global_u1);
-        string u2P = apply_u_to_block(chosenP, global_u2);
+        // 根据 chosen_P 填这一列的 φ：W == u1·P → φ=1，否则 φ=0（即用 u2）
+        string g1 = mul_u(global_u1, chosen_P);
+        string g2 = mul_u(global_u2, chosen_P);
 
         for (int r = 0; r < R; ++r)
         {
-            const string& W = blk[r][c];
+            const string &W = col_blocks[r];
 
-            if (blocks_equal(W, u1P))
-            {
-                // 这一行这一列用 u1
-                phi_bits[r*C + c] = 1;   // 约定 1 -> 选 global_u1
-            }
-            else if (blocks_equal(W, u2P))
-            {
-                // 用 u2
-                phi_bits[r*C + c] = 0;   // 0 -> 选 global_u2
-            }
+            if (W == g1)
+                phi_mat[r][c] = 1;
             else
-            {
-                // 理论上不该发生，因为上面已检查所有块 ∈ {u1P, u2P}
-                std::cout << "  ✘ 行 " << r << " 列 " << c 
-                          << " 无法匹配到 u1 或 u2\n";
-                return results;
-            }
+                phi_mat[r][c] = 0;   // solvable 保证 W==g1 或 W==g2
         }
     }
 
+    // 展平成你原来使用的一维 phi_bits / psi_bits
+    vector<int> phi_bits(R*C);
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c)
+            phi_bits[r*C + c] = phi_mat[r][c];
 
-    // 9) 变量集合
+    vector<int> psi_bits(C*B);
+    for (int c = 0; c < C; ++c)
+        for (int l = 0; l < B; ++l)
+            psi_bits[c*B + l] = (Mpsi_cols[c][l] == '1' ? 1 : 0);
+
+    // =================================================================
+    // 8) 后面全是你原来的逻辑：切 Γ/Θ/Λ，构造 TT，打印，一行未动
+    // =================================================================
+
+    // 9) 从 in.order 切出 Γ,Θ,Λ（这里 in.order 已经是“原始编号的 [Γ,Θ,Λ] 顺序”）
     vector<int> Gamma, Theta, Lambda;
     for (int i = 0; i < k1; ++i) Gamma.push_back(in.order[i]);
     for (int i = 0; i < k2; ++i) Theta.push_back(in.order[k1 + i]);
@@ -541,14 +609,20 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
     Rst.phi_tt.f01.resize(R*C);
     for (int i = 0; i < R*C; ++i)
         Rst.phi_tt.f01[i] = phi_bits[i] ? '1' : '0';
-    Rst.phi_tt.order = Gamma;
-    Rst.phi_tt.order.insert(Rst.phi_tt.order.end(), Theta.begin(), Theta.end());
+
+    // ★★ 这里是关键：phi_tt.order 里放“原始变量编号”，顺序为 Γ,Θ
+    Rst.phi_tt.order.clear();
+    for (int v : Gamma) Rst.phi_tt.order.push_back(v);
+    for (int v : Theta) Rst.phi_tt.order.push_back(v);
 
     Rst.psi_tt.f01.resize(C*B);
     for (int i = 0; i < C*B; ++i)
         Rst.psi_tt.f01[i] = psi_bits[i] ? '1' : '0';
-    Rst.psi_tt.order = Theta;
-    Rst.psi_tt.order.insert(Rst.psi_tt.order.end(), Lambda.begin(), Lambda.end());
+
+    // ★★ 同理：psi_tt.order = Θ,Λ（原始编号）
+    Rst.psi_tt.order.clear();
+    for (int v : Theta)  Rst.psi_tt.order.push_back(v);
+    for (int v : Lambda) Rst.psi_tt.order.push_back(v);
 
     std::cout << "\n===== Matrix Form (Theorem 4.2) =====\n";
     std::cout << "k1=" << k1 << "  k2=" << k2 << "  k3=" << k3 << "\n";
@@ -563,7 +637,9 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
     return results;
 }
 
-//重排变量，所有解版本
+// =====================================================
+// 枚举所有 (k1,k2,k3) + 所有 Γ,Θ,Λ 重排（找到全部解）
+// =====================================================
 static vector<BiDecompResult>
 enumerate_bi_decomposition_all_permutations(const TT& in)
 {
@@ -587,30 +663,29 @@ enumerate_bi_decomposition_all_permutations(const TT& in)
 
             std::cout << "\n========== 枚举 k1=" << k1 << ", k2=" << k2 << ", k3=" << k3 << " ==========\n";
 
-            // 枚举 Θ 的所有 C(n, k2) 种组合
+            // 枚举 Θ 的所有 C(n, k2) 种组合（按“位置”选）
             vector<bool> theta_mask(n, false);
             std::fill(theta_mask.begin(), theta_mask.begin() + k2, true);
 
             do {
-                // 获取 Θ 的变量索引（1-based用于公式计算）
-                vector<int> Theta_indices;
+                vector<int> Theta_indices; // 1-based positions
                 for (int i = 0; i < n; ++i)
                     if (theta_mask[i])
                         Theta_indices.push_back(i + 1);
 
-                // 剩余变量用于 Γ 和 Λ
+                // 剩余位置用于 Γ 和 Λ
                 vector<int> remaining;
                 for (int i = 0; i < n; ++i)
                     if (!theta_mask[i])
                         remaining.push_back(i + 1);
 
-                // 枚举 Λ 的所有 C(n-k2, k3) 种组合
+                // 枚举 Λ 的所有 C(n-k2, k3) 种组合（位置）
                 vector<bool> lambda_mask(remaining.size(), false);
                 std::fill(lambda_mask.begin(), lambda_mask.begin() + k3, true);
 
                 do {
-                    vector<int> Lambda_indices;
-                    vector<int> Gamma_indices;
+                    vector<int> Lambda_indices; // positions
+                    vector<int> Gamma_indices;  // positions
 
                     for (size_t i = 0; i < remaining.size(); ++i)
                     {
@@ -624,8 +699,8 @@ enumerate_bi_decomposition_all_permutations(const TT& in)
                     if (k1 == k3 && Gamma_indices[0] > Lambda_indices[0])
                         continue;
 
-                    // 打印当前尝试的分组
-                    std::cout << "  尝试 Γ={";
+                    // 打印当前尝试的“位置分组”
+                    std::cout << "  尝试 位置 Γ={";
                     for (int g : Gamma_indices) std::cout << g << " ";
                     std::cout << "}, Θ={";
                     for (int t : Theta_indices) std::cout << t << " ";
@@ -633,28 +708,38 @@ enumerate_bi_decomposition_all_permutations(const TT& in)
                     for (int l : Lambda_indices) std::cout << l << " ";
                     std::cout << "}\n";
 
-                    // 构造重排后的真值表
-                    string reordered_f01 = apply_variable_reordering(
-                        f01, n, Gamma_indices, Theta_indices, Lambda_indices, k1, k2, k3);
+                    // 根据“位置”对 f01 作重排
+                    // string reordered_f01 = apply_variable_reordering(
+                    //     f01, n, Gamma_indices, Theta_indices, Lambda_indices, k1, k2, k3);
 
-                    // 构造重排后的 TT 对象
+                    string reordered_f01 = apply_variable_reordering_swap(
+                        f01, n,
+                        Gamma_indices, Theta_indices, Lambda_indices,
+                        k1, k2, k3
+                    );
+
+
+                    std::cout << "📌 重排后的 f01（二进制） = " << reordered_f01 << "\n";
+
+                    // 构造重排后的 TT，order 里必须是“原始编号”，顺序为 [Γ,Θ,Λ]
                     TT reordered_tt;
                     reordered_tt.f01 = reordered_f01;
-                    
-                    // 新的变量顺序：Γ, Θ, Λ（转回0-based）
                     reordered_tt.order.clear();
-                    for (int idx : Gamma_indices) reordered_tt.order.push_back(idx );
-                    for (int idx : Theta_indices) reordered_tt.order.push_back(idx );
-                    for (int idx : Lambda_indices) reordered_tt.order.push_back(idx );
+
+                    // ★★ 这里是关键修正点：用位置去 in.order 里取“原始编号”
+                    for (int pos : Gamma_indices)
+                        reordered_tt.order.push_back(in.order[pos - 1]);
+                    for (int pos : Theta_indices)
+                        reordered_tt.order.push_back(in.order[pos - 1]);
+                    for (int pos : Lambda_indices)
+                        reordered_tt.order.push_back(in.order[pos - 1]);
 
                     // 在重排后的真值表上尝试分解
                     auto sub = enumerate_one_case(reordered_tt, k1, k2, k3);
-                    
+
                     if (!sub.empty())
-                    {
                         std::cout << "    ✓ 找到解！\n";
-                    }
-                    
+
                     results.insert(results.end(), sub.begin(), sub.end());
 
                 } while (std::prev_permutation(lambda_mask.begin(), lambda_mask.end()));
@@ -667,10 +752,7 @@ enumerate_bi_decomposition_all_permutations(const TT& in)
 }
 
 // =====================================================
-// 顶层：枚举所有 k2,k3（不重排变量）不重排变量版本
-//   k2 = 1..n-2
-//   k3 = 1..(n-k2)/2   （保证 k3 <= k1）
-//   一旦某个 k2 有解，就返回该 k2 的所有解
+// 不重排变量版本：枚举所有 (k1,k2,k3) 在当前 in 上分解
 // =====================================================
 static vector<BiDecompResult>
 enumerate_bi_decomposition_no_reorder(const TT& in)
@@ -683,11 +765,9 @@ enumerate_bi_decomposition_no_reorder(const TT& in)
     int n = (int)std::log2((double)f01.size());
     if ((int)in.order.size() != n) return results;
 
-    // 不再在第一个 k2 有结果就 return，
-    // 而是把所有 k2,k3 的分解都收集起来。
     for (int k2 = 1; k2 <= n - 2; ++k2)
     {
-        int r = (n - k2) / 2;   // 最大 k3，保证 k3 <= k1
+        int r = (n - k2) / 2;
 
         for (int k3 = 1; k3 <= r; ++k3)
         {
@@ -702,6 +782,9 @@ enumerate_bi_decomposition_no_reorder(const TT& in)
     return results;
 }
 
+// =====================================================
+// 边重排边找，找到第一个解就立即返回
+// =====================================================
 // =====================================================
 // 边重排边找，找到第一个解就立即返回
 // =====================================================
@@ -724,72 +807,99 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
             int k1 = n - k2 - k3;
             if (k1 <= 0) continue;
 
-            // 先试试不重排的情况
+            std::cout << "\n========== 尝试 k1=" << k1 << ", k2=" << k2 << ", k3=" << k3 << " ==========\n";
+
+            // 先试试不重排的情况（变量已经是 [Γ,Θ,Λ] 顺序）
             auto sub = enumerate_one_case(in, k1, k2, k3);
             if (!sub.empty())
             {
                 out = sub[0];
+                std::cout << "✓ 不需重排即可分解！\n";
                 return true;
             }
 
-            // 枚举 Θ 的所有 C(n, k2) 种组合
+            // 枚举 Θ 的所有 C(n, k2) 种组合（按位置，1-based）
             vector<bool> theta_mask(n, false);
             std::fill(theta_mask.begin(), theta_mask.begin() + k2, true);
 
             do {
-                // 获取 Θ 的变量索引（1-based用于公式计算）
-                vector<int> Theta_indices;
+                vector<int> Theta_pos;  // Θ的位置
                 for (int i = 0; i < n; ++i)
                     if (theta_mask[i])
-                        Theta_indices.push_back(i + 1);
+                        Theta_pos.push_back(i + 1);
 
-                // 剩余变量用于 Γ 和 Λ
-                vector<int> remaining;
+                // 剩余位置用于分配 Γ 和 Λ
+                vector<int> remaining_pos;
                 for (int i = 0; i < n; ++i)
                     if (!theta_mask[i])
-                        remaining.push_back(i + 1);
+                        remaining_pos.push_back(i + 1);
 
                 // 枚举 Λ 的所有 C(n-k2, k3) 种组合
-                vector<bool> lambda_mask(remaining.size(), false);
+                vector<bool> lambda_mask(remaining_pos.size(), false);
                 std::fill(lambda_mask.begin(), lambda_mask.begin() + k3, true);
 
                 do {
-                    vector<int> Lambda_indices;
-                    vector<int> Gamma_indices;
+                    vector<int> Lambda_pos;  // Λ的位置
+                    vector<int> Gamma_pos;   // Γ的位置
 
-                    for (size_t i = 0; i < remaining.size(); ++i)
+                    for (size_t i = 0; i < remaining_pos.size(); ++i)
                     {
                         if (lambda_mask[i])
-                            Lambda_indices.push_back(remaining[i]);
+                            Lambda_pos.push_back(remaining_pos[i]);
                         else
-                            Gamma_indices.push_back(remaining[i]);
+                            Gamma_pos.push_back(remaining_pos[i]);
                     }
 
-                    // 避免对称重复：当 k1 == k3 时，要求 Γ[0] < Λ[0]
-                    if (k1 == k3 && Gamma_indices[0] > Lambda_indices[0])
+                    // ⭐ 对称性剪枝：当 k1 == k3 时，要求 Γ 的首位置 < Λ 的首位置
+                    if (k1 == k3 && Gamma_pos[0] > Lambda_pos[0])
                         continue;
 
-                    // 构造重排后的真值表
-                    string reordered_f01 = apply_variable_reordering(
-                        f01, n, Gamma_indices, Theta_indices, Lambda_indices, k1, k2, k3);
+                    // 打印当前尝试
+                    std::cout << "  尝试位置：Γ={";
+                    for (int p : Gamma_pos) std::cout << p << " ";
+                    std::cout << "}, Θ={";
+                    for (int p : Theta_pos) std::cout << p << " ";
+                    std::cout << "}, Λ={";
+                    for (int p : Lambda_pos) std::cout << p << " ";
+                    std::cout << "} → 变量 Γ={";
+                    for (int p : Gamma_pos) std::cout << in.order[p-1] << " ";
+                    std::cout << "}, Θ={";
+                    for (int p : Theta_pos) std::cout << in.order[p-1] << " ";
+                    std::cout << "}, Λ={";
+                    for (int p : Lambda_pos) std::cout << in.order[p-1] << " ";
+                    std::cout << "}\n";
 
-                    // 构造重排后的 TT 对象
+                    // ⭐ 重排真值表：按 [Γ, Θ, Λ] 的位置顺序
+                    string reordered_f01 = apply_variable_reordering_swap(
+                        f01, n,
+                        Gamma_pos, Theta_pos, Lambda_pos,
+                        k1, k2, k3
+                    );
+
+
+                        std::cout << "📌 重排后的 f01（二进制） = " << reordered_f01 << "\n";
+
+
+                    // 构造重排后的 TT，order 保存原始变量编号
                     TT reordered_tt;
                     reordered_tt.f01 = reordered_f01;
-                    
-                    // 新的变量顺序：Γ, Θ, Λ（转回0-based）
                     reordered_tt.order.clear();
-                    for (int idx : Gamma_indices) reordered_tt.order.push_back(idx);
-                    for (int idx : Theta_indices) reordered_tt.order.push_back(idx);
-                    for (int idx : Lambda_indices) reordered_tt.order.push_back(idx);
+
+                    // 按 [Γ, Θ, Λ] 顺序记录原始变量编号
+                    for (int pos : Gamma_pos)
+                        reordered_tt.order.push_back(in.order[pos - 1]);
+                    for (int pos : Theta_pos)
+                        reordered_tt.order.push_back(in.order[pos - 1]);
+                    for (int pos : Lambda_pos)
+                        reordered_tt.order.push_back(in.order[pos - 1]);
 
                     // 在重排后的真值表上尝试分解
                     sub = enumerate_one_case(reordered_tt, k1, k2, k3);
-                    
-                    // 只要找到一个解，立即返回
+
                     if (!sub.empty())
                     {
                         out = sub[0];
+                        std::cout << "    ✓ 找到分解！\n";
                         return true;
                     }
 
@@ -799,110 +909,92 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
         }
     }
 
+    std::cout << "❌ 遍历所有 (k1,k2,k3) 和变量分组，未找到有效分解\n";
     return false;
 }
-
 // =====================================================
 // 递归双分解（参照 DSD 的编号和递归方式）
 // =====================================================
-
-// 递归双分解主函数
 static int bi_decomp_recursive(const TT& f, int depth = 0)
 {
     int len = f.f01.size();
-    
-    // 🔥 基本情况：2输入或更少，直接建小树
+
+    // 基本情况：2输入或更少，直接建小树
     if (len <= 4)
         return build_small_tree(f);
-    
-    // 🔥 尝试找到第一个双分解
+
+    // 尝试找到第一个双分解
     BiDecompResult result;
     bool found = find_first_bi_decomposition(f, result);
-    
+
     if (!found)
     {
-        // 找不到双分解，回退到建小树
-        cout << "⚠️  深度 " << depth << "：无法双分解，回退到直接建树\n";
+        std::cout << "⚠️  深度 " << depth << "：无法双分解，回退到直接建树\n";
         return build_small_tree(f);
     }
-    
-    // 🔥 找到了双分解，打印信息
-    cout << "\n" << string(depth*2, ' ') << "📌 深度 " << depth << " 双分解成功：\n";
-    cout << string(depth*2, ' ') << "   k1=" << result.k1 
-         << "  k2=" << result.k2 << "  k3=" << result.k3 << "\n";
-    
-    cout << string(depth*2, ' ') << "   Γ = { ";
-    for (int v : result.Gamma) cout << v << " ";
-    cout << "}\n";
-    
-    cout << string(depth*2, ' ') << "   Θ = { ";
-    for (int v : result.Theta) cout << v << " ";
-    cout << "}\n";
-    
-    cout << string(depth*2, ' ') << "   Λ = { ";
-    for (int v : result.Lambda) cout << v << " ";
-    cout << "}\n";
-    
-    cout << string(depth*2, ' ') << "   F(u,v) = " << result.F01 << "\n";
-    
-    // 🔥 记录变量到 FINAL_VAR_ORDER（像 DSD 那样）
+
+    // 打印信息
+    std::cout << "\n" << string(depth*2, ' ') << "📌 深度 " << depth << " 双分解成功：\n";
+    std::cout << string(depth*2, ' ') << "   k1=" << result.k1
+              << "  k2=" << result.k2 << "  k3=" << result.k3 << "\n";
+
+    std::cout << string(depth*2, ' ') << "   Γ = { ";
+    for (int v : result.Gamma) std::cout << v << " ";
+    std::cout << "}\n";
+
+    std::cout << string(depth*2, ' ') << "   Θ = { ";
+    for (int v : result.Theta) std::cout << v << " ";
+    std::cout << "}\n";
+
+    std::cout << string(depth*2, ' ') << "   Λ = { ";
+    for (int v : result.Lambda) std::cout << v << " ";
+    std::cout << "}\n";
+
+    std::cout << string(depth*2, ' ') << "   F(u,v) = " << result.F01 << "\n";
+
+    // 记录变量到 FINAL_VAR_ORDER（全是原始编号）
     for (int v : result.Gamma)
-    {
-        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), v) 
-            == FINAL_VAR_ORDER.end())
-        {
+        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), v) == FINAL_VAR_ORDER.end())
             FINAL_VAR_ORDER.push_back(v);
-        }
-    }
     for (int v : result.Theta)
-    {
-        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), v) 
-            == FINAL_VAR_ORDER.end())
-        {
+        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), v) == FINAL_VAR_ORDER.end())
             FINAL_VAR_ORDER.push_back(v);
-        }
-    }
     for (int v : result.Lambda)
-    {
-        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), v) 
-            == FINAL_VAR_ORDER.end())
-        {
+        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), v) == FINAL_VAR_ORDER.end())
             FINAL_VAR_ORDER.push_back(v);
-        }
-    }
-    
-    // 🔥 准备 φ 和 ψ 的递归
+
+    // 准备 φ 和 ψ 的递归
     TT phi_tt = result.phi_tt;
     TT psi_tt = result.psi_tt;
-    
+
     int n_phi = phi_tt.order.size();
     int n_psi = psi_tt.order.size();
-    
-    cout << string(depth*2, ' ') << "📌 递归分解 φ：原始变量 { ";
-    for (int v : phi_tt.order) cout << v << " ";
-    cout << "} → 局部编号 { ";
-    for (int i = 1; i <= n_phi; i++) cout << i << " ";
-    cout << "}\n";
-    cout << string(depth*2, ' ') << "   映射关系：";
+
+    std::cout << string(depth*2, ' ') << "📌 递归分解 φ：原始变量 { ";
+    for (int v : phi_tt.order) std::cout << v << " ";
+    std::cout << "} → 局部编号 { ";
+    for (int i = 1; i <= n_phi; i++) std::cout << i << " ";
+    std::cout << "}\n";
+    std::cout << string(depth*2, ' ') << "   映射关系：";
     for (int i = 0; i < n_phi; i++)
-        cout << "位置" << (i+1) << "→变量" << phi_tt.order[i] << " ";
-    cout << "\n";
-    
-    cout << string(depth*2, ' ') << "📌 递归分解 ψ：原始变量 { ";
-    for (int v : psi_tt.order) cout << v << " ";
-    cout << "} → 局部编号 { ";
-    for (int i = 1; i <= n_psi; i++) cout << i << " ";
-    cout << "}\n";
-    cout << string(depth*2, ' ') << "   映射关系：";
+        std::cout << "位置" << (i+1) << "→变量" << phi_tt.order[i] << " ";
+    std::cout << "\n";
+
+    std::cout << string(depth*2, ' ') << "📌 递归分解 ψ：原始变量 { ";
+    for (int v : psi_tt.order) std::cout << v << " ";
+    std::cout << "} → 局部编号 { ";
+    for (int i = 1; i <= n_psi; i++) std::cout << i << " ";
+    std::cout << "}\n";
+    std::cout << string(depth*2, ' ') << "   映射关系：";
     for (int i = 0; i < n_psi; i++)
-        cout << "位置" << (i+1) << "→变量" << psi_tt.order[i] << " ";
-    cout << "\n\n";
-    
-    // 🔥 递归分解 φ 和 ψ
+        std::cout << "位置" << (i+1) << "→变量" << psi_tt.order[i] << " ";
+    std::cout << "\n\n";
+
+    // 递归分解 φ 和 ψ
     int L = bi_decomp_recursive(phi_tt, depth + 1);
     int R = bi_decomp_recursive(psi_tt, depth + 1);
-    
-    // 🔥 创建当前节点（用 F 作为函数）
+
+    // 创建当前节点（用 F 作为函数）
     return new_node(result.F01, {L, R});
 }
 
@@ -918,13 +1010,13 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
 
     int n = static_cast<int>(std::log2(binary01.size()));
     ORIGINAL_VAR_COUNT = n;
-    
+
     TT root;
     root.f01 = binary01;
     root.order.resize(n);
 
     for (int i = 0; i < n; ++i)
-        root.order[i] = i + 1;  // 位置 (i+1) 对应变量 (i+1)
+        root.order[i] = i + 1;  // 位置 (i+1) 对应变量 (i+1)（原始编号）
 
     std::cout << "======= 双分解递归开始 =======\n";
     std::cout << "输入 = " << binary01 << " (n=" << n << ")\n";
@@ -938,11 +1030,11 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
     STEP_ID = 1;
     FINAL_VAR_ORDER.clear();
 
-    // 🔥 可选：先缩减到 support
+    // 可选：先缩减到 support（这里用和 DSD 相同的 shrink_to_support）
     TT root_shrunk = shrink_to_support(root);
     int root_id = bi_decomp_recursive(root_shrunk, 0);
-    
-    // 🔥 打印最终节点列表
+
+    // 打印最终节点列表
     std::cout << "\n===== 最终双分解节点列表 =====\n";
     for (auto& nd : NODE_LIST)
     {
@@ -955,7 +1047,6 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
         }
         else if (!nd.child.empty())
         {
-            // 打印所有子节点
             std::cout << "(";
             for (size_t i = 0; i < nd.child.size(); ++i)
             {
