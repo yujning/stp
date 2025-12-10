@@ -202,6 +202,170 @@ static string apply_variable_reordering_swap(
     return out;
 }
 
+
+// =====================================================
+// ⭐ k2=0 且 k3=1 特殊情况：直接从块序列提取全局 u
+// =====================================================
+static vector<BiDecompResult>
+handle_k2_eq_0_k3_eq_1_special(const TT& in, int k1, int k3)
+{
+    vector<BiDecompResult> results;
+
+    const string &f01 = in.f01;
+    int n = k1 + k3;  // k2=0
+    
+    if ((int)in.order.size() != n) return results;
+    
+    // ⭐ 只处理 k3=1 的情况
+    if (k3 != 1) return results;
+
+    int R = 1 << k1;  // 行数
+    int B = 2;        // 块长度固定为 2
+
+    std::cout << "\n🔷 特殊情况：k2=0, k3=1 (块长度=2)\n";
+
+    // ========== 1. 提取所有块 ==========
+    vector<string> blocks(R);
+    for (int r = 0; r < R; ++r)
+    {
+        string block;
+        for (int l = 0; l < B; ++l)
+        {
+            int idx = (r << k3) | l;
+            block.push_back(f01[idx]);
+        }
+        blocks[r] = block;
+    }
+
+    std::cout << "📦 块序列：";
+    for (const string &b : blocks) std::cout << b << " ";
+    std::cout << "\n";
+
+    // ========== 2. 统计不同的块类型 ==========
+    set<string> unique_blocks(blocks.begin(), blocks.end());
+    
+    std::cout << "📊 不同的块类型：";
+    for (const string &b : unique_blocks) std::cout << b << " ";
+    std::cout << " (共 " << unique_blocks.size() << " 种)\n";
+
+    // ========== 3. 检查是否可分解 ==========
+    if (unique_blocks.size() > 2)
+    {
+        std::cout << "❌ 块类型超过 2 种，不可分解\n";
+        return results;
+    }
+
+    if (unique_blocks.empty())
+    {
+        std::cout << "❌ 无有效块，不可分解\n";
+        return results;
+    }
+
+    // ========== 4. 确定全局 u ==========
+    vector<string> u_list(unique_blocks.begin(), unique_blocks.end());
+    
+    string global_u1 = u_list[0];
+    string global_u2 = (u_list.size() == 2) ? u_list[1] : u_list[0];
+
+    std::cout << "✅ 全局 u1 = " << global_u1 << ", u2 = " << global_u2 << "\n";
+
+    // ========== 5. 构造 F ==========
+    string F01 = global_u1 + global_u2;
+    std::cout << "📌 F = " << F01 << "\n";
+
+    // ========== 6. 强制 Mψ = [10...0] (恒等向量) ==========
+    string Mpsi_fixed;
+    Mpsi_fixed.push_back('1');
+    for (int i = 1; i < B; ++i)
+        Mpsi_fixed.push_back('0');
+
+    std::cout << "📌 强制 Mψ = [" << Mpsi_fixed << "] (恒等向量)\n";
+
+    // ========== 7. 构造 φ：根据块匹配 u1 或 u2 ==========
+    // 定义 u 作用规则
+    auto mul_u = [&](const string& u, const string& P) -> string {
+        if (u == "10") return P;
+        if (u == "01") {
+            string out = P;
+            for (char &c : out) c = (c=='0' ? '1' : '0');
+            return out;
+        }
+        if (u == "11") return string(P.size(), '1');
+        if (u == "00") return string(P.size(), '0');
+        return P;
+    };
+
+    string g1 = mul_u(global_u1, Mpsi_fixed);
+    string g2 = mul_u(global_u2, Mpsi_fixed);
+
+    std::cout << "📌 u1·Mψ = " << g1 << "\n";
+    std::cout << "📌 u2·Mψ = " << g2 << "\n";
+
+    vector<int> phi_bits(R);
+    bool valid = true;
+
+    for (int r = 0; r < R; ++r)
+    {
+        if (blocks[r] == g1)
+            phi_bits[r] = 1;
+        else if (blocks[r] == g2)
+            phi_bits[r] = 0;
+        else
+        {
+            std::cout << "❌ 块 " << blocks[r] << " 无法匹配 u1·Mψ 或 u2·Mψ\n";
+            valid = false;
+            break;
+        }
+    }
+
+    if (!valid)
+        return results;
+
+    std::cout << "✅ φ 构造成功：";
+    for (int b : phi_bits) std::cout << b;
+    std::cout << "\n";
+
+    // ========== 8. 构造结果 ==========
+    vector<int> Gamma, Lambda;
+    for (int i = 0; i < k1; ++i)
+        Gamma.push_back(in.order[i]);
+    for (int i = 0; i < k3; ++i)
+        Lambda.push_back(in.order[k1 + i]);
+
+    BiDecompResult Rst;
+    Rst.k1 = k1;
+    Rst.k2 = 0;
+    Rst.k3 = k3;
+    Rst.Gamma = Gamma;
+    Rst.Theta = {};  // 空
+    Rst.Lambda = Lambda;
+    Rst.F01 = F01;
+
+    // φ(Γ) - 只依赖 Γ
+    Rst.phi_tt.f01.resize(R);
+    for (int i = 0; i < R; ++i)
+        Rst.phi_tt.f01[i] = phi_bits[i] ? '1' : '0';
+    Rst.phi_tt.order = Gamma;
+
+    // ψ(Λ) - 只依赖 Λ
+    Rst.psi_tt.f01 = Mpsi_fixed;
+    Rst.psi_tt.order = Lambda;
+
+    std::cout << "\n✅ k2=0 分解成功！\n";
+    std::cout << "   Γ = { ";
+    for (int v : Gamma) std::cout << v << " ";
+    std::cout << "}\n";
+    std::cout << "   Λ = { ";
+    for (int v : Lambda) std::cout << v << " ";
+    std::cout << "}\n";
+    std::cout << "   φ = " << Rst.phi_tt.f01 << "\n";
+    std::cout << "   ψ = " << Rst.psi_tt.f01 << "\n\n";
+
+    results.push_back(Rst);
+    return results;
+}
+
+
 // =====================================================
 // 根据公式(34)进行真值表重排
 //   Gamma_indices / Theta_indices / Lambda_indices 是位置（1-based）
@@ -284,6 +448,10 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
     int R = 1 << k1;
     int C = 1 << k2;
     int B = 1 << k3;
+
+    if (k2 == 0 && k3 == 1)
+        return handle_k2_eq_0_k3_eq_1_special(in, k1, k3);
+
 
     auto is_const_block2 = [&](const string& b){
         if (b.empty()) return false;
@@ -449,7 +617,9 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
             }
         }
     }
+    
 
+    
     vector<string> u_types(required_u.begin(), required_u.end());
 
     // 4) 检查是否可分解
@@ -652,7 +822,7 @@ enumerate_bi_decomposition_all_permutations(const TT& in)
     if ((int)in.order.size() != n) return results;
 
     // 枚举 k2 和 k3 的大小
-    for (int k2 = 1; k2 <= n - 2; ++k2)
+    for (int k2 = 0; k2 <= n - 2; ++k2)
     {
         int max_k3 = (n - k2) / 2;
 
@@ -798,11 +968,12 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
     if ((int)in.order.size() != n) return false;
 
     // 枚举 k2 和 k3 的大小
-    for (int k2 = 1; k2 <= n - 2; ++k2)
+    for (int k2 = 0; k2 <= n - 2; ++k2)
     {
         int max_k3 = (n - k2) / 2;
 
-        for (int k3 = 1; k3 <= max_k3; ++k3)
+        // 修改：k3 从 max_k3 递减到 1（或0，看您需求）
+        for (int k3 = max_k3; k3 >= 1; --k3) 
         {
             int k1 = n - k2 - k3;
             if (k1 <= 0) continue;
