@@ -437,14 +437,14 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
     if (k1 + k2 + k3 != n) return results;
 
     // 对称剪枝：Γ 和 Λ 等大的时候用首变量比较
-    if (k1 == k3)
-    {
-        int gamma_first  = in.order[0];
-        int lambda_first = in.order[k1 + k2];
+    // if (k1 == k3)
+    // {
+    //     int gamma_first  = in.order[0];
+    //     int lambda_first = in.order[k1 + k2];
 
-        if (gamma_first > lambda_first)
-            return results;
-    }
+    //     if (gamma_first > lambda_first)
+    //         return results;
+    // }
 
     int R = 1 << k1;
     int C = 1 << k2;
@@ -811,154 +811,152 @@ enumerate_one_case(const TT& in, int k1, int k2, int k3)
 // =====================================================
 // 枚举所有 (k1,k2,k3) + 所有 Γ,Θ,Λ 重排（找到全部解）
 // =====================================================
-static vector<BiDecompResult>
-enumerate_bi_decomposition_all_permutations(const TT& in)
-{
-    vector<BiDecompResult> results;
+// static vector<BiDecompResult>
+// enumerate_bi_decomposition_all_permutations(const TT& in)
+// {
+//     vector<BiDecompResult> results;
 
-    const string &f01 = in.f01;
-    if (f01.empty()) return results;
+//     const string &f01 = in.f01;
+//     if (f01.empty()) return results;
 
-    int n = (int)std::log2((double)f01.size());
-    if ((int)in.order.size() != n) return results;
+//     int n = (int)std::log2((double)f01.size());
+//     if ((int)in.order.size() != n) return results;
 
-    // 枚举 k2 和 k3 的大小
-    for (int k2 = 0; k2 <= n - 2; ++k2)
-    {
-        int max_k3 = (n - k2) / 2;
+//     // 枚举 k2 和 k3 的大小
+//     for (int k2 = 0; k2 <= n - 2; ++k2)
+//     {
+//         int max_k3 = (n - k2) / 2;
 
-        for (int k3 = max_k3; k3 >= 1; --k3)
-        {
-            int k1 = n - k2 - k3;
-            if (k1 <= 0) continue;
+//         for (int k3 = max_k3; k3 >= 1; --k3)
+//         {
+//             int k1 = n - k2 - k3;
+//             if (k1 <= 0) continue;
 
-            std::cout << "\n========== 枚举 k1=" << k1 << ", k2=" << k2 << ", k3=" << k3 << " ==========\n";
+//             std::cout << "\n========== 枚举 k1=" << k1 << ", k2=" << k2 << ", k3=" << k3 << " ==========\n";
 
-            // 枚举 Θ 的所有 C(n, k2) 种组合（按“位置”选）
-            vector<bool> theta_mask(n, false);
-            std::fill(theta_mask.begin(), theta_mask.begin() + k2, true);
+//             // 枚举 Θ 的所有 C(n, k2) 种组合（按“位置”选）
+//             vector<bool> theta_mask(n, false);
+//             std::fill(theta_mask.begin(), theta_mask.begin() + k2, true);
 
-            do {
-                vector<int> Theta_indices; // 1-based positions
-                for (int i = 0; i < n; ++i)
-                    if (theta_mask[i])
-                        Theta_indices.push_back(i + 1);
+//             do {
+//                 vector<int> Theta_indices; // 1-based positions
+//                 for (int i = 0; i < n; ++i)
+//                     if (theta_mask[i])
+//                         Theta_indices.push_back(i + 1);
 
-                // 剩余位置用于 Γ 和 Λ
-                vector<int> remaining;
-                for (int i = 0; i < n; ++i)
-                    if (!theta_mask[i])
-                        remaining.push_back(i + 1);
+//                 // 剩余位置用于 Γ 和 Λ
+//                 vector<int> remaining;
+//                 for (int i = 0; i < n; ++i)
+//                     if (!theta_mask[i])
+//                         remaining.push_back(i + 1);
 
-                // 枚举 Λ 的所有 C(n-k2, k3) 种组合（位置）
-                vector<bool> lambda_mask(remaining.size(), false);
-                std::fill(lambda_mask.begin(), lambda_mask.begin() + k3, true);
+//                 // 枚举 Λ 的所有 C(n-k2, k3) 种组合（位置）
+//                 vector<bool> lambda_mask(remaining.size(), false);
+//                 std::fill(lambda_mask.begin(), lambda_mask.begin() + k3, true);
 
-                do {
-                    vector<int> Lambda_indices; // positions
-                    vector<int> Gamma_indices;  // positions
+//                 do {
+//                     vector<int> Lambda_indices; // positions
+//                     vector<int> Gamma_indices;  // positions
 
-                    for (size_t i = 0; i < remaining.size(); ++i)
-                    {
-                        if (lambda_mask[i])
-                            Lambda_indices.push_back(remaining[i]);
-                        else
-                            Gamma_indices.push_back(remaining[i]);
-                    }
+//                     for (size_t i = 0; i < remaining.size(); ++i)
+//                     {
+//                         if (lambda_mask[i])
+//                             Lambda_indices.push_back(remaining[i]);
+//                         else
+//                             Gamma_indices.push_back(remaining[i]);
+//                     }
 
-                    // 避免对称重复：当 k1 == k3 时，要求 Γ[0] < Λ[0]
-                    if (k1 == k3 && Gamma_indices[0] > Lambda_indices[0])
-                        continue;
+//                     // 避免对称重复：当 k1 == k3 时，要求 Γ[0] < Λ[0]
+//                     if (k1 == k3 && Gamma_indices[0] > Lambda_indices[0])
+//                         continue;
 
-                    // 打印当前尝试的“位置分组”
-                    std::cout << "  尝试 位置 Γ={";
-                    for (int g : Gamma_indices) std::cout << g << " ";
-                    std::cout << "}, Θ={";
-                    for (int t : Theta_indices) std::cout << t << " ";
-                    std::cout << "}, Λ={";
-                    for (int l : Lambda_indices) std::cout << l << " ";
-                    std::cout << "}\n";
+//                     // 打印当前尝试的“位置分组”
+//                     std::cout << "  尝试 位置 Γ={";
+//                     for (int g : Gamma_indices) std::cout << g << " ";
+//                     std::cout << "}, Θ={";
+//                     for (int t : Theta_indices) std::cout << t << " ";
+//                     std::cout << "}, Λ={";
+//                     for (int l : Lambda_indices) std::cout << l << " ";
+//                     std::cout << "}\n";
 
-                    // 根据“位置”对 f01 作重排
-                    // string reordered_f01 = apply_variable_reordering(
-                    //     f01, n, Gamma_indices, Theta_indices, Lambda_indices, k1, k2, k3);
+//                     // 根据“位置”对 f01 作重排
+//                     // string reordered_f01 = apply_variable_reordering(
+//                     //     f01, n, Gamma_indices, Theta_indices, Lambda_indices, k1, k2, k3);
 
-                    string reordered_f01 = apply_variable_reordering_swap(
-                        f01, n,
-                        Gamma_indices, Theta_indices, Lambda_indices,
-                        k1, k2, k3
-                    );
+//                     string reordered_f01 = apply_variable_reordering_swap(
+//                         f01, n,
+//                         Gamma_indices, Theta_indices, Lambda_indices,
+//                         k1, k2, k3
+//                     );
 
 
-                    std::cout << "📌 重排后的 f01（二进制） = " << reordered_f01 << "\n";
+//                     std::cout << "📌 重排后的 f01（二进制） = " << reordered_f01 << "\n";
 
-                    // 构造重排后的 TT，order 里必须是“原始编号”，顺序为 [Γ,Θ,Λ]
-                    TT reordered_tt;
-                    reordered_tt.f01 = reordered_f01;
-                    reordered_tt.order.clear();
+//                     // 构造重排后的 TT，order 里必须是“原始编号”，顺序为 [Γ,Θ,Λ]
+//                     TT reordered_tt;
+//                     reordered_tt.f01 = reordered_f01;
+//                     reordered_tt.order.clear();
 
-                    // ★★ 这里是关键修正点：用位置去 in.order 里取“原始编号”
-                    for (int pos : Gamma_indices)
-                        reordered_tt.order.push_back(in.order[pos - 1]);
-                    for (int pos : Theta_indices)
-                        reordered_tt.order.push_back(in.order[pos - 1]);
-                    for (int pos : Lambda_indices)
-                        reordered_tt.order.push_back(in.order[pos - 1]);
+//                     // ★★ 这里是关键修正点：用位置去 in.order 里取“原始编号”
+//                     for (int pos : Gamma_indices)
+//                         reordered_tt.order.push_back(in.order[pos - 1]);
+//                     for (int pos : Theta_indices)
+//                         reordered_tt.order.push_back(in.order[pos - 1]);
+//                     for (int pos : Lambda_indices)
+//                         reordered_tt.order.push_back(in.order[pos - 1]);
 
-                    // 在重排后的真值表上尝试分解
-                    auto sub = enumerate_one_case(reordered_tt, k1, k2, k3);
+//                     // 在重排后的真值表上尝试分解
+//                     auto sub = enumerate_one_case(reordered_tt, k1, k2, k3);
 
-                    if (!sub.empty())
-                        std::cout << "    ✓ 找到解！\n";
+//                     if (!sub.empty())
+//                         std::cout << "    ✓ 找到解！\n";
 
-                    results.insert(results.end(), sub.begin(), sub.end());
+//                     results.insert(results.end(), sub.begin(), sub.end());
 
-                } while (std::prev_permutation(lambda_mask.begin(), lambda_mask.end()));
+//                 } while (std::prev_permutation(lambda_mask.begin(), lambda_mask.end()));
 
-            } while (std::prev_permutation(theta_mask.begin(), theta_mask.end()));
-        }
-    }
+//             } while (std::prev_permutation(theta_mask.begin(), theta_mask.end()));
+//         }
+//     }
 
-    return results;
-}
+//     return results;
+// }
 
 // =====================================================
 // 不重排变量版本：枚举所有 (k1,k2,k3) 在当前 in 上分解
 // =====================================================
-static vector<BiDecompResult>
-enumerate_bi_decomposition_no_reorder(const TT& in)
-{
-    vector<BiDecompResult> results;
+// static vector<BiDecompResult>
+// enumerate_bi_decomposition_no_reorder(const TT& in)
+// {
+//     vector<BiDecompResult> results;
 
-    const string &f01 = in.f01;
-    if (f01.empty()) return results;
+//     const string &f01 = in.f01;
+//     if (f01.empty()) return results;
 
-    int n = (int)std::log2((double)f01.size());
-    if ((int)in.order.size() != n) return results;
+//     int n = (int)std::log2((double)f01.size());
+//     if ((int)in.order.size() != n) return results;
 
-    for (int k2 = 1; k2 <= n - 2; ++k2)
-    {
-        int r = (n - k2) / 2;
+//     for (int k2 = 1; k2 <= n - 2; ++k2)
+//     {
+//         int r = (n - k2) / 2;
 
-        for (int k3 = 1; k3 <= r; ++k3)
-        {
-            int k1 = n - k2 - k3;
-            if (k1 <= 0) continue;
+//         for (int k3 = 1; k3 <= r; ++k3)
+//         {
+//             int k1 = n - k2 - k3;
+//             if (k1 <= 0) continue;
 
-            auto sub = enumerate_one_case(in, k1, k2, k3);
-            results.insert(results.end(), sub.begin(), sub.end());
-        }
-    }
+//             auto sub = enumerate_one_case(in, k1, k2, k3);
+//             results.insert(results.end(), sub.begin(), sub.end());
+//         }
+//     }
 
-    return results;
-}
+//     return results;
+// }
 
 // =====================================================
 // 边重排边找，找到第一个解就立即返回
 // =====================================================
-// =====================================================
-// 边重排边找，找到第一个解就立即返回
-// =====================================================
+
 static bool
 find_first_bi_decomposition(const TT& in, BiDecompResult& out)
 {
@@ -1084,6 +1082,8 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
     std::cout << "❌ 遍历所有 (k1,k2,k3) 和变量分组，未找到有效分解\n";
     return false;
 }
+
+
 // =====================================================
 // 递归双分解（参照 DSD 的编号和递归方式）
 // =====================================================
