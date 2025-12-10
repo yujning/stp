@@ -8,6 +8,7 @@
 #include "excute.hpp"
 #include "reorder.hpp"
 #include "stp_dsd.hpp"
+#include "node_global.hpp"
 
 using std::string;
 using std::vector;

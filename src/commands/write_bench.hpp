@@ -109,7 +109,8 @@ protected:
         // 2) 节点命名
         // ====================================================
         std::map<int,std::string> name_of;
-
+         
+        
         for (auto &n : NODE_LIST)
         {
             if (n.func == "in")

@@ -4,9 +4,7 @@ using namespace std;
 
 #include <set>
 #include <algorithm>
-
-inline std::vector<int> FINAL_VAR_ORDER;
-inline int ORIGINAL_VAR_COUNT = 0;
+#include "node_global.hpp"
 
 #include "excute.hpp"
 #include "reorder.hpp"
@@ -27,9 +25,9 @@ struct DSDNode {
     int var_id = -1;  // 对于 "in" 节点：原始变量编号（1-based）
 };
 
-static vector<DSDNode> NODE_LIST;
-static int NODE_ID = 1;
-static int STEP_ID = 1;
+// static vector<DSDNode> NODE_LIST;
+// static int NODE_ID = 1;
+// static int STEP_ID = 1;
 
 // ================================================
 // TT = truth table + variable order
@@ -396,19 +394,56 @@ static bool derive_block_semantics_general(
 // =====================================================
 // new_node / new_in_node
 // =====================================================
-static int new_node(const string& func, const vector<int>& child)
+// static int new_node(const string& func, const vector<int>& child)
+// {
+//     int id = NODE_ID++;
+//     NODE_LIST.push_back({ id, func, child, -1 });
+//     return id;
+// }
+
+// 哈希表：func + children → node_id
+static int new_node(const std::string& func, const std::vector<int>& child)
 {
+    // 结构哈希 key（不 reverse）
+    auto key = std::make_tuple(func, child);
+
+    // 如果已有完全相同结构 → 直接复用
+    if (NODE_HASH.count(key))
+        return NODE_HASH[key];
+
+    // 创建新节点
     int id = NODE_ID++;
     NODE_LIST.push_back({ id, func, child, -1 });
+
+    // 加入哈希表
+    NODE_HASH[key] = id;
+
     return id;
 }
 
-static int new_in_node(int var_id)  // var_id = 1..n
+
+// static int new_in_node(int var_id)  // var_id = 1..n
+// {
+//     int id = NODE_ID++;
+//     NODE_LIST.push_back({ id, "in", {}, var_id });
+//     return id;
+// }
+
+// var_id → node_id
+
+
+static int new_in_node(int var_id)
 {
+    if (INPUT_NODE_CACHE.count(var_id))
+        return INPUT_NODE_CACHE[var_id];
+
     int id = NODE_ID++;
     NODE_LIST.push_back({ id, "in", {}, var_id });
+
+    INPUT_NODE_CACHE[var_id] = id;
     return id;
 }
+
 
 // =====================================================
 // build_small_tree - 记录变量到 FINAL_VAR_ORDER
