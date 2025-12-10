@@ -656,7 +656,7 @@ enumerate_bi_decomposition_all_permutations(const TT& in)
     {
         int max_k3 = (n - k2) / 2;
 
-        for (int k3 = 1; k3 <= max_k3; ++k3)
+        for (int k3 = max_k3; k3 >= 1; --k3)
         {
             int k1 = n - k2 - k3;
             if (k1 <= 0) continue;
