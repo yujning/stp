@@ -745,11 +745,9 @@ static int dsd_factor(const TT& f, int depth=0)
 // =====================================================
 // run_dsd_recursive
 // =====================================================
-// =====================================================
-// run_dsd_recursive
-// =====================================================
 inline bool run_dsd_recursive(const std::string& binary01)
 {
+    RESET_NODE_GLOBAL();
     if (!is_power_of_two(binary01.size())) {
         std::cout << "输入长度必须为 2^n\n";
         return false;
