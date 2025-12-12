@@ -402,7 +402,7 @@ static bool derive_block_semantics_general(
 // }
 
 // 哈希表：func + children → node_id
-static int new_node(const std::string& func, const std::vector<int>& child)
+inline int new_node(const std::string& func, const std::vector<int>& child)
 {
     // 结构哈希 key（不 reverse）
     auto key = std::make_tuple(func, child);
@@ -432,7 +432,7 @@ static int new_node(const std::string& func, const std::vector<int>& child)
 // var_id → node_id
 
 
-static int new_in_node(int var_id)
+inline int new_in_node(int var_id)
 {
     if (INPUT_NODE_CACHE.count(var_id))
         return INPUT_NODE_CACHE[var_id];
@@ -442,6 +442,23 @@ static int new_in_node(int var_id)
 
     INPUT_NODE_CACHE[var_id] = id;
     return id;
+}
+
+inline std::vector<int> make_children_from_order(const TT& t)
+{
+    std::vector<int> ch;
+    ch.reserve(t.order.size());
+
+    for (int var_id : t.order)
+    {
+        // 复用缓存输入节点（不会重复 new）
+        ch.push_back(new_in_node(var_id));
+
+        // 顺便维护 FINAL_VAR_ORDER（如果你需要）
+        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
+            FINAL_VAR_ORDER.push_back(var_id);
+    }
+    return ch;
 }
 
 

@@ -1,14 +1,15 @@
 #pragma once
-#include <vector>
+#include <algorithm>
 #include <map>
-#include <tuple>
+
 #include <string>
-#include "bi_decomposition.hpp"
-#include "bi_dec_else_dec.hpp"
-#include "stp_dsd.hpp"
+#include <tuple>
+#include <vector>
 // 前向声明，避免循环依赖
 struct DSDNode;
-
+struct TT;
+int new_node(const std::string&, const std::vector<int>&);
+int new_in_node(int var_id);
 // C++17 允许 inline 全局变量，只需定义一次即可，全工程自动共享
 inline int NODE_ID = 1;
 inline int STEP_ID = 1;
@@ -39,19 +40,4 @@ inline void RESET_NODE_GLOBAL()
     INPUT_NODE_CACHE.clear();
     NODE_HASH.clear();
 }
-static inline std::vector<int> make_children_from_order(const TT& t)
-{
-  std::vector<int> ch;
-  ch.reserve(t.order.size());
-
-  for (int var_id : t.order)
-  {
-    // 复用缓存输入节点（不会重复 new）
-    ch.push_back(new_in_node(var_id));
-
-    // 顺便维护 FINAL_VAR_ORDER（如果你需要）
-    if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
-      FINAL_VAR_ORDER.push_back(var_id);
-  }
-  return ch;
-}
+inline std::vector<int> make_children_from_order(const TT& t);
