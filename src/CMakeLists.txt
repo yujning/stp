@@ -78,7 +78,8 @@ endif()
 target_link_libraries(stp PRIVATE
     alice
     fmt
-    kitty        # ✅ 新增：链接 kitty
+    kitty
+    mockturtle       
     stp_lib
 )
 

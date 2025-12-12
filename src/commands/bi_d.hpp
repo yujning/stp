@@ -146,7 +146,6 @@
 
 // #endif
 
-
 #ifndef BI_D_HPP
 #define BI_D_HPP
 
@@ -158,11 +157,10 @@
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/print.hpp>
 
-// 你的 STP / DSD 头文件（里面有 struct TT 的定义）
+#include "../include/algorithms/node_global.hpp"
 #include "../include/algorithms/stp_dsd.hpp"
-
-// 上面这个头要先包含，然后再包含 bi_decomposition.hpp
 #include "../include/algorithms/bi_decomposition.hpp"
+#include "../include/algorithms/bi_dec_else_dec.hpp"   
 
 namespace alice
 {
@@ -174,7 +172,11 @@ public:
         : command(env, "Bi-decomposition (recursive)")
     {
         add_option("-f, --factor", hex_input,
-                   "hexadecimal number (must map to 2^n bits)");
+                   "truth table as hex string")->required();
+
+        // ⭐ 加 else dec fallback 开关
+        add_flag("-e, --else_dec", use_else_dec,
+                 "enable else_dec fallback when BD fails");
     }
 
 protected:
@@ -182,69 +184,67 @@ protected:
     {
         using clk = std::chrono::high_resolution_clock;
 
+        std::string hex = hex_input;
+
         if (!is_set("factor"))
         {
-            std::cout << "❌ Please use: bd -f <hex>\n";
+            std::cout << "❌ Usage: bd -f <hex> [-s]\n";
             return;
         }
 
-        std::string hex = hex_input;
-
-        // 去掉 0x 前缀
+        // ------------------------------------------------------
+        // 解析 Hex 变成真值表（binary）
+        // ------------------------------------------------------
         if (hex.rfind("0x", 0) == 0 || hex.rfind("0X", 0) == 0)
             hex = hex.substr(2);
 
-        unsigned bit_count = hex.size() * 4;
-        if (bit_count == 0)
+        unsigned bits = hex.size() * 4;
+        if (bits == 0)
         {
-            std::cout << "❌ Empty hex string.\n";
+            std::cout << "❌ Empty truth table.\n";
             return;
         }
 
-        unsigned num_vars = 0;
-        while ((1u << num_vars) < bit_count) num_vars++;
-        if ((1u << num_vars) != bit_count)
+        unsigned nvars = 0;
+        while ((1u << nvars) < bits) nvars++;
+
+        if ((1u << nvars) != bits)
         {
-            std::cout << "❌ Hex length is not 2^n bits.\n";
+            std::cout << "❌ TT size is not 2^n.\n";
             return;
         }
 
-        if (bit_count == 4)
-        {
-            std::cout << "⚠ Input is already 2-input, nothing to decompose.\n";
-            return;
-        }
-
-        kitty::dynamic_truth_table tt(num_vars);
+        kitty::dynamic_truth_table tt(nvars);
         kitty::create_from_hex_string(tt, hex);
 
         std::ostringstream oss;
         kitty::print_binary(tt, oss);
-        std::string binary = oss.str();
+        std::string binF = oss.str();
 
-        std::cout << "📘 Hex = " << hex
-                  << "  =>  binary = " << binary
-                  << " (vars = " << num_vars << ")\n\n";
+        std::cout << "📘 TT = " << binF << "  (vars=" << nvars << ")\n";
+
+        // ------------------------------------------------------
+        // 设置 其他分解模式（全局变量）
+        // ------------------------------------------------------
+        ENABLE_ELSE_DEC = use_else_dec;  // ⭐ 关键一步
 
         auto t1 = clk::now();
+
         
-        // 🔥 直接调用递归双分解
-        bool success = run_bi_decomp_recursive(binary);
-        
+        bool success = run_bi_decomp_recursive(binF);
+
         auto t2 = clk::now();
-        auto us =
-            std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
         if (!success)
-        {
-            std::cout << "\n❌ Bi-decomposition failed.\n";
-        }
+            std::cout << "❌ Decomposition failed\n";
 
-        std::cout << "\n⏱ execution time = " << us << " us\n";
+        std::cout << "⏱ time = " << us << " us\n";
     }
 
 private:
     std::string hex_input{};
+    bool use_else_dec = false;  // ⭐ 是否启用 其他分解
 };
 
 ALICE_ADD_COMMAND(bd, "STP")

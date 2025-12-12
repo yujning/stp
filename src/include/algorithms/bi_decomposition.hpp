@@ -7,12 +7,15 @@
 #include <kitty/kitty.hpp>
 #include "excute.hpp"
 #include "reorder.hpp"
-#include "stp_dsd.hpp"
 #include "node_global.hpp"
+#include "bi_dec_else_dec.hpp"
+#include "stp_dsd.hpp"
 
 using std::string;
 using std::vector;
 using std::set;
+
+int new_node(const std::string&, const std::vector<int>&);
 
 // =====================================================
 // BiDecompResult
@@ -890,6 +893,7 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
 static int bi_decomp_recursive(const TT& f, int depth = 0)
 {
     int len = f.f01.size();
+    int nv  = f.order.size();
 
     // 基本情况：2输入或更少，直接建小树
     if (len <= 4)
@@ -899,11 +903,20 @@ static int bi_decomp_recursive(const TT& f, int depth = 0)
     BiDecompResult result;
     bool found = find_first_bi_decomposition(f, result);
 
-    if (!found)
-    {
-        std::cout << "⚠️  深度 " << depth << "：无法双分解，回退到直接建树\n";
-        return build_small_tree(f);
-    }
+if (!found)
+{
+  if (ENABLE_ELSE_DEC && nv <= 4 && nv >= 3)
+  {
+    std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 启用 exact 2-LUT refine\n";
+    auto ch = make_children_from_order(f);
+    return else_decompose(f, ch, depth);
+  }
+
+  std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 直接建树\n";
+  return build_small_tree(f);
+}
+
+
 
     // 打印信息
     std::cout << "\n" << string(depth*2, ' ') << "📌 深度 " << depth << " 双分解成功：\n";

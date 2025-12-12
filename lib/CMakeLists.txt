@@ -9,3 +9,4 @@ if (NOT TARGET kitty)
 endif()
 
 add_subdirectory(alice)
+add_subdirectory(mockturtle)

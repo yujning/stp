@@ -1,6 +1,11 @@
 #pragma once
 #include <bits/stdc++.h>
-using namespace std;
+using std::string;
+using std::vector;
+using std::set;
+using std::cout;
+using std::endl;
+
 
 #include "excute.hpp"   // generate_swap_vec / Vec_chain_multiply / Vec_semi_tensor_product
 
