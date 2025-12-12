@@ -183,7 +183,8 @@ protected:
     void execute() override
     {
         using clk = std::chrono::high_resolution_clock;
-
+        
+        use_else_dec = is_set("else_dec");
         std::string hex = hex_input;
 
         if (!is_set("factor"))

@@ -7,7 +7,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-
+#include <utility>
 
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/constructors.hpp>
@@ -29,7 +29,7 @@ inline int else_decompose(
     int depth
 )
 {
-    const int n = static_cast<int>(std::log2(f.f01.size()));
+   const int n = static_cast<int>(std::log2(f.f01.size()));
 
     if (n > 4)
     {
@@ -74,11 +74,29 @@ inline int else_decompose(
     // =====================================================
     std::unordered_map<mockturtle::klut_network::node, int> id_map;
 
-    // ⭐ PI 映射：直接绑定原 children
+    // ⭐ PI 映射：优先复用传入的 child，如果编号不匹配则按当前变量→原始变量映射新建
     {
         int idx = 0;
         klut.foreach_pi([&](auto pi_node) {
-            id_map[pi_node] = orig_children[idx];
+            const int var = f.order[idx];
+            const int mapped_var = (ORIGINAL_VAR_COUNT > 0)
+                                        ? ORIGINAL_VAR_COUNT - var + 1
+                                        : var;
+
+            int node_id = (idx < static_cast<int>(orig_children.size()))
+                               ? orig_children[idx]
+                               : -1;
+
+
+            if (node_id <= 0)
+                node_id = new_in_node(mapped_var);
+
+            id_map[pi_node] = node_id;
+
+            std::cout << "      PI" << idx
+                      << " : local var " << var
+                      << " (mapped=" << mapped_var << ")"
+                      << " → node " << node_id << "\n";
             ++idx;
         });
     }
@@ -100,6 +118,11 @@ inline int else_decompose(
             auto fin_node = klut.get_node(fin_sig);
             children[i] = id_map.at(fin_node);
         });
+
+                // exact 2-LUT 的左右输入与 STP 约定相反，统一在此交换
+        if (children.size() == 2)
+            std::swap(children[0], children[1]);
+
 
         int my_id = new_node(func01, children);
         id_map[n_node] = my_id;

@@ -32,6 +32,7 @@ inline void RESET_NODE_GLOBAL()
 {
     NODE_ID = 1;
     STEP_ID = 1;
+    ENABLE_ELSE_DEC = false;
     ORIGINAL_VAR_COUNT = 0;
 
     NODE_LIST.clear();

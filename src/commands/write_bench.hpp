@@ -23,8 +23,9 @@ namespace alice
 // ========================================================
 static std::string varname_from_id(int v)
 {
-    int maxv = ORIGINAL_VAR_COUNT;
-    return std::string(1, char('a' + (maxv - v)));
+    // int maxv = ORIGINAL_VAR_COUNT;
+    // return std::string(1, char('a' + (maxv - v)));
+        return std::string(1, char('a' + (v - 1)));
 }
 
 // ========================================================
@@ -157,7 +158,8 @@ protected:
         std::cout << "✅ BENCH written to " << filename << "\n\n";
 
         std::cout << "📋 变量映射（最高位→'a'）：\n";
-        for (int v = ORIGINAL_VAR_COUNT; v >= 1; v--)
+        //for (int v = ORIGINAL_VAR_COUNT; v >= 1; v--)
+        for (int v = 1; v <= ORIGINAL_VAR_COUNT; v++)
             std::cout << "   变量" << v << " → '" 
                       << varname_from_id(v) << "'\n";
     }

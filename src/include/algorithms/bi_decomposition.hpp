@@ -988,8 +988,10 @@ if (!found)
 // =====================================================
 inline bool run_bi_decomp_recursive(const std::string& binary01)
 {
-     RESET_NODE_GLOBAL(); 
-     
+    bool enable_else_dec = ENABLE_ELSE_DEC;
+    RESET_NODE_GLOBAL(); 
+    ENABLE_ELSE_DEC = enable_else_dec;
+
     if (!is_power_of_two(binary01.size())) {
         std::cout << "输入长度必须为 2^n\n";
         return false;
@@ -1003,7 +1005,8 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
     root.order.resize(n);
 
     for (int i = 0; i < n; ++i)
-        root.order[i] = i + 1;  // 位置 (i+1) 对应变量 (i+1)（原始编号）
+       // root.order[i] = i + 1;  // 位置 (i+1) 对应变量 (i+1)（原始编号）
+       root.order[i] = n - i;  // 位置 (i+1) 对应变量 (n - i)（高位编号大、低位编号小）
 
     std::cout << "======= 双分解递归开始 =======\n";
     std::cout << "输入 = " << binary01 << " (n=" << n << ")\n";
