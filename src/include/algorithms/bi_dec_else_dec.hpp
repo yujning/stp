@@ -1,4 +1,5 @@
 #pragma once
+
 // ⭐ 防止 std::is_trivial 污染 percy
 #ifdef is_trivial
 #undef is_trivial
@@ -7,11 +8,13 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <utility>
+#include <unordered_map>
+#include <stdexcept>
+#include <string>
 
 #include <kitty/dynamic_truth_table.hpp>
-#include <kitty/constructors.hpp>
 #include <kitty/print.hpp>
+#include <kitty/constructors.hpp>
 
 #include <mockturtle/networks/klut.hpp>
 #include <mockturtle/algorithms/node_resynthesis/exact.hpp>
@@ -19,8 +22,16 @@
 #include "stp_dsd.hpp"
 #include "node_global.hpp"   // new_node / new_in_node
 
-
+// 你已有的接口（外部实现）
 int new_node(const std::string&, const std::vector<int>&);
+
+// 如果你系统里有常量节点，建议你接上（可选）
+// int const0_node();
+// int const1_node();
+
+// 如果你已经有 build_small_tree(f) 就保留，否则你自己实现一个 fallback
+int build_small_tree(const TT& f);
+
 
 
 inline int else_decompose(
@@ -29,108 +40,60 @@ inline int else_decompose(
     int depth
 )
 {
-   const int n = static_cast<int>(std::log2(f.f01.size()));
+  // f.f01 是二进制字符串，长度应该是 2^n
+  const uint32_t bits = static_cast<uint32_t>(f.f01.size());
+  const uint32_t n = static_cast<uint32_t>(std::log2(bits));
 
-    if (n > 4)
-    {
-        std::cout << "⚠️ depth " << depth
-                  << ": exact 2-LUT only supports n ≤ 4\n";
-        return build_small_tree(f);
-    }
+  if ((1u << n) != bits)
+    throw std::runtime_error("else_decompose: f01 length is not power-of-two");
 
+  if (n > 4u)
+  {
     std::cout << "⚠️ depth " << depth
-              << ": EXACT 2-LUT refine (n=" << n << ")\n";
+              << ": exact 2-LUT only supports n ≤ 4 (got n=" << n << ")\n";
+    return build_small_tree(f);
+  }
 
-    // =====================================================
-    // 1) TT → kitty TT（严格保持变量顺序）
-    // =====================================================
-    kitty::dynamic_truth_table tt(n);
-    const int N = 1 << n;
+  // 可选：检查字符串只含 0/1
+  for (char c : f.f01)
+    if (c != '0' && c != '1')
+      throw std::runtime_error("else_decompose: f01 contains non-binary char");
 
-    for (int i = 0; i < N; ++i)
-    {
-        // STP → kitty 索引反序（你系统里是固定对的）
-        int ki = N - 1 - i;
-        if (f.f01[i] == '1')
-            kitty::set_bit(tt, ki);
-    }
+  std::cout << "⚠️ depth " << depth
+            << ": EXACT 2-LUT refine (n=" << n << ")\n";
+  std::cout << "f=" << f.f01 << "\n";
 
-    // =====================================================
-    // 2) exact 2-LUT synthesis
-    // =====================================================
-    mockturtle::klut_network klut;
-    std::vector<mockturtle::klut_network::signal> pis;
-    pis.reserve(n);
+  // 1) binary string -> kitty TT
+  kitty::dynamic_truth_table tt(n);
+  kitty::create_from_binary_string(tt, f.f01);
+  std::cout << "[DEBUG] kitty hex = " << kitty::to_hex(tt) << "\n";
 
-    for (int i = 0; i < n; ++i)
-        pis.push_back(klut.create_pi());
+  // 2) build klut and create EXACTLY n PIs
+  mockturtle::klut_network klut;
+  std::vector<mockturtle::klut_network::signal> pis;
+  pis.reserve(n);
 
-    mockturtle::exact_resynthesis<mockturtle::klut_network> resyn(2);
-    resyn(klut, tt, pis.begin(), pis.end(),
-          [&](auto const& g) { klut.create_po(g); });
+  for (uint32_t i = 0; i < n; ++i)
+    pis.push_back(klut.create_pi());
 
-    // =====================================================
-    // 3) klut → NODE_LIST（关键：PI 不 new）
-    // =====================================================
-    std::unordered_map<mockturtle::klut_network::node, int> id_map;
+  // 防御：必须保证输入数量对
+  if (pis.size() != n)
+    throw std::runtime_error("else_decompose: PI creation failed");
 
-    // ⭐ PI 映射：优先复用传入的 child，如果编号不匹配则按当前变量→原始变量映射新建
-    {
-        int idx = 0;
-        klut.foreach_pi([&](auto pi_node) {
-            const int var = f.order[idx];
-            const int mapped_var = (ORIGINAL_VAR_COUNT > 0)
-                                        ? ORIGINAL_VAR_COUNT - var + 1
-                                        : var;
-
-            int node_id = (idx < static_cast<int>(orig_children.size()))
-                               ? orig_children[idx]
-                               : -1;
-
-
-            if (node_id <= 0)
-                node_id = new_in_node(mapped_var);
-
-            id_map[pi_node] = node_id;
-
-            std::cout << "      PI" << idx
-                      << " : local var " << var
-                      << " (mapped=" << mapped_var << ")"
-                      << " → node " << node_id << "\n";
-            ++idx;
-        });
-    }
-
-    // =====================================================
-    // 4) gate 展开
-    // =====================================================
-    klut.foreach_gate([&](auto n_node) {
-
-        auto ltt = klut.node_function(n_node);
-
-        std::ostringstream oss;
-        kitty::print_binary(ltt, oss);
-        std::string func01 = oss.str();
-
-        std::vector<int> children(ltt.num_vars());
-
-        klut.foreach_fanin(n_node, [&](auto fin_sig, auto i) {
-            auto fin_node = klut.get_node(fin_sig);
-            children[i] = id_map.at(fin_node);
+  // 3) exact 2-LUT
+  mockturtle::exact_resynthesis<mockturtle::klut_network> resyn(2);
+  resyn(klut, tt, pis.begin(), pis.end(),
+        [&](auto const& s) {
+          klut.create_po(s);
         });
 
-                // exact 2-LUT 的左右输入与 STP 约定相反，统一在此交换
-        if (children.size() == 2)
-            std::swap(children[0], children[1]);
+  std::cout << "Exact 2-LUT count = " << klut.num_gates() << "\n";
 
+  // 这里先返回一个占位（如果你要接回自己的 node 图，再加翻译逻辑）
+  // 最简单：把 PO 视为结果
+  auto po_sig = klut.po_at(0);
+  (void)po_sig;
 
-        int my_id = new_node(func01, children);
-        id_map[n_node] = my_id;
-    });
-
-    // =====================================================
-    // 5) 输出
-    // =====================================================
-    auto po_node = klut.get_node(klut.po_at(0));
-    return id_map.at(po_node);
+  return 0;
 }
+

@@ -101,7 +101,7 @@ protected:
         // ====================================================
         // 1) 输入变量
         // ====================================================
-        for (int v = ORIGINAL_VAR_COUNT; v >= 1; v--)
+        for (int v = 1; v <= ORIGINAL_VAR_COUNT; v++)
             fout << "INPUT(" << varname_from_id(v) << ")\n";
 
         fout << "OUTPUT(F0)\n\n";
