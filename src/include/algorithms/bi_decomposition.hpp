@@ -1019,6 +1019,10 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
     NODE_ID = 1;
     STEP_ID = 1;
     FINAL_VAR_ORDER.clear();
+    
+        // 预先构建所有输入节点，固定编号与变量一一对应
+    for (int v = 1; v <= n; ++v)
+        new_in_node(v);
 
     // 可选：先缩减到 support（这里用和 DSD 相同的 shrink_to_support）
     TT root_shrunk = shrink_to_support(root);

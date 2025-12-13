@@ -449,15 +449,27 @@ inline std::vector<int> make_children_from_order(const TT& t)
     std::vector<int> ch;
     ch.reserve(t.order.size());
 
-    for (int var_id : t.order)
-    {
-        // 复用缓存输入节点（不会重复 new）
-        ch.push_back(new_in_node(var_id));
+        // 先按变量编号升序初始化输入节点，保证 in(var=i) 的编号与变量一致
+    std::vector<int> sorted_vars = t.order;
+    std::sort(sorted_vars.begin(), sorted_vars.end());
+    sorted_vars.erase(std::unique(sorted_vars.begin(), sorted_vars.end()), sorted_vars.end());
+    for (int var_id : sorted_vars)
+        new_in_node(var_id);
 
-        // 顺便维护 FINAL_VAR_ORDER（如果你需要）
-        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
+    // FINAL_VAR_ORDER 保持原有次序
+
+        for (int var_id : t.order)
+          if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
             FINAL_VAR_ORDER.push_back(var_id);
+
+    // klut 的 PI 顺序对应 kitty 变量顺序（最低位在前），所以反向绑定
+    for (auto it = t.order.rbegin(); it != t.order.rend(); ++it)
+    {
+        int var_id = *it;
+        ch.push_back(new_in_node(var_id));
     }
+    
+  
     return ch;
 }
 
@@ -791,6 +803,10 @@ inline bool run_dsd_recursive(const std::string& binary01)
     STEP_ID = 1;
     FINAL_VAR_ORDER.clear();
 
+        // 先创建所有输入节点，确保编号与变量一致
+    for (int v = 1; v <= n; ++v)
+        new_in_node(v);
+        
     // 🔥 只在最开始缩减一次
     TT root_shrunk = shrink_to_support(root);
     int root_id = dsd_factor(root_shrunk);  // 递归中不再缩减

@@ -89,11 +89,56 @@ inline int else_decompose(
 
   std::cout << "Exact 2-LUT count = " << klut.num_gates() << "\n";
 
-  // 这里先返回一个占位（如果你要接回自己的 node 图，再加翻译逻辑）
-  // 最简单：把 PO 视为结果
-  auto po_sig = klut.po_at(0);
-  (void)po_sig;
+  // 3) 把 klut 网络翻译成全局节点（遵循 bd 打印格式）
+  // 3) 把 klut 网络翻译成全局节点（遵循 bd 打印格式）
+  std::unordered_map<mockturtle::klut_network::node, int> node_map;
 
-  return 0;
+  // 输入节点：按原始顺序绑定到 orig_children
+  klut.foreach_pi([&](auto const& n, auto index) {
+    if (index < orig_children.size())
+      node_map[n] = orig_children[index];
+  });
+
+  // 中间 gate
+  klut.foreach_gate([&](auto const& n) {
+    std::vector<int> childs;
+    childs.reserve(klut.fanin_size(n));
+
+    klut.foreach_fanin(n, [&](auto const& f) {
+      const auto f_node = klut.get_node(f);
+
+      if (klut.is_constant(f_node))
+      {
+        // 只在真的需要时才建常量节点，避免额外打印
+        const bool is_one = klut.is_complemented(f) ^ klut.constant_value(f_node);
+        childs.push_back(new_node(is_one ? "1" : "0", {}));
+      }
+      else
+      {
+        auto cid = node_map.at(f_node);
+        if (klut.is_complemented(f))
+          cid = new_node("01", { cid });
+        childs.push_back(cid);
+        
+      }
+    });
+
+  if (childs.size() == 2)
+    std::swap(childs[0], childs[1]);
+
+  auto func = klut.node_function(n);
+  std::string func_bin = kitty::to_binary(func);
+
+  node_map[n] = new_node(func_bin, childs);
+
+  });
+
+  // 输出（只取第一个 PO）
+  auto po_sig = klut.po_at(0);
+  auto root_id = node_map.at(klut.get_node(po_sig));
+  if (klut.is_complemented(po_sig))
+    root_id = new_node("01", { root_id });
+
+  return root_id;
 }
 
