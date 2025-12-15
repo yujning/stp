@@ -905,7 +905,9 @@ static int bi_decomp_recursive(const TT& f, int depth = 0)
 
 if (!found)
 {
-  if (ENABLE_ELSE_DEC && nv <= 4 && nv >= 3)
+    // 对于 3 个及以上输入的函数，允许走 else_decompose；
+  // 其中 5 输入及以上会在 else_decompose 内先进行香农分解到 4 输入。
+  if (ENABLE_ELSE_DEC && nv >= 3)
   {
     std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 启用 exact 2-LUT refine\n";
     auto ch = make_children_from_order(f);

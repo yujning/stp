@@ -50,8 +50,26 @@ inline int else_decompose(
   if (n > 4u)
   {
     std::cout << "⚠️ depth " << depth
-              << ": exact 2-LUT only supports n ≤ 4 (got n=" << n << ")\n";
-    return build_small_tree(f);
+              << ": Shannon decomposition (n=" << n << ")\n";
+
+    if (orig_children.empty())
+      throw std::runtime_error("else_decompose: no children for Shannon split");
+
+    // 香农分解先以高位变量为轴（orig_children 最后一个变量）
+    const auto pivot = orig_children.back();
+    std::vector<int> sub_children(orig_children.begin(), orig_children.end() - 1);
+
+    const auto half_bits = bits / 2u;
+    TT f_pos{ f.f01.substr(0, half_bits), {} };
+    TT f_neg{ f.f01.substr(half_bits), {} };
+
+    const auto pos_node = else_decompose(f_pos, sub_children, depth + 1);
+    const auto neg_node = else_decompose(f_neg, sub_children, depth + 1);
+
+    const auto pos_term = new_node("1000", { pivot, pos_node });
+    const auto neg_term = new_node("0010", { pivot, neg_node });
+
+    return new_node("1110", { pos_term, neg_term });
   }
 
   // 可选：检查字符串只含 0/1
