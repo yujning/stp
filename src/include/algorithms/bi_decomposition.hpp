@@ -16,6 +16,7 @@ using std::vector;
 using std::set;
 
 int new_node(const std::string&, const std::vector<int>&);
+inline bool BD_MINIMAL_OUTPUT = false;
 
 // =====================================================
 // BiDecompResult
@@ -116,10 +117,18 @@ static string apply_variable_reordering_swap(
     for (int x : Theta_indices) target.push_back(x);
     for (int x : Lambda_indices) target.push_back(x);
 
-    cout << "🔁 构造交换矩阵链（冒泡法）:\n";
-    cout << "  起始序列（目标序列）: ";
-    for (int v : target) cout << v << " ";
-    cout << "\n  终点序列: 1 2 3 ... " << n << "\n";
+    // cout << "🔁 构造交换矩阵链（冒泡法）:\n";
+    // cout << "  起始序列（目标序列）: ";
+    // for (int v : target) cout << v << " ";
+    // cout << "\n  终点序列: 1 2 3 ... " << n << "\n";
+
+        if (!BD_MINIMAL_OUTPUT)
+    {
+        cout << "🔁 构造交换矩阵链（冒泡法）：\n";
+        cout << "  起始序列（目标序列）: ";
+        for (int v : target) cout << v << " ";
+        cout << "\n  终点序列: 1 2 3 ... " << n << "\n";
+    }
 
     // 当前序列（要不断被冒泡变成 1,2,3,...,n）
     vector<int> cur = target;
@@ -135,14 +144,24 @@ static string apply_variable_reordering_swap(
         for (int i = 0; i < n; i++)
             if (cur[i] == var) { pos = i; break; }
 
-        if (pos == -1) {
-            cout << "  ⚠️ 未找到变量 " << var << "\n";
+        // if (pos == -1) {
+        //     cout << "  ⚠️ 未找到变量 " << var << "\n";
+
+                if (pos == -1)
+        {
+            if (!BD_MINIMAL_OUTPUT)
+                cout << "  ⚠️ 未找到变量 " << var << "\n";
             continue;
         }
 
         // 已在第一位则跳过
-        if (pos == 0) {
-            cout << "  • 变量 " << var << " 已在第一位，跳过\n";
+        // if (pos == 0) {
+        //     cout << "  • 变量 " << var << " 已在第一位，跳过\n";
+
+                if (pos == 0)
+        {
+            if (!BD_MINIMAL_OUTPUT)
+                cout << "  • 变量 " << var << " 已在第一位，跳过\n";
             continue;
         }
 
@@ -151,12 +170,22 @@ static string apply_variable_reordering_swap(
         int P = (1 << d);          // W[P,2]
         int Q = 2;
 
-        cout << "  • W[" << P << ", " << Q << "] : 把变量 " << var
-             << " 从位置 " << (pos+1)
-             << " 移到第一位\n";
+        // cout << "  • W[" << P << ", " << Q << "] : 把变量 " << var
+        //      << " 从位置 " << (pos+1)
+        //      << " 移到第一位\n";
+        // cout << "    当前序列: ";
+        // for (int v : cur) cout << v << " ";
+                if (!BD_MINIMAL_OUTPUT)
+        {
+            cout << "  • W[" << P << ", " << Q << "] : 把变量 " << var
+                 << " 从位置 " << (pos+1)
+                 << " 移到第一位\n";
 
-        cout << "    当前序列: ";
-        for (int v : cur) cout << v << " ";
+                             cout << "    当前序列: ";
+            for (int v : cur) cout << v << " ";
+        }
+
+
 
         // 记录该 W
         W_chain.push_back(generate_swap_vec(P, Q));
@@ -167,28 +196,47 @@ static string apply_variable_reordering_swap(
             cur[j] = cur[j - 1];
         cur[0] = temp;
 
-        cout << " → ";
+        if (!BD_MINIMAL_OUTPUT)
+        {
+            cout << " → ";
+            for (int v : cur) cout << v << " ";
+            cout << "\n";
+        }
+    }
+
+    // cout << "🔚 冒泡结束，最终序列: ";
+    // for (int v : cur) cout << v << " ";
+    // cout << "（应为 1 2 3 4 ...）\n";
+
+    // // ---------- 3. 正确的矩阵乘法顺序：W_last · ... · W1 ----------
+    // cout << "📌 最终交换矩阵链 W = ";
+    // for (int i = W_chain.size(); i >= 1; --i)
+        if (!BD_MINIMAL_OUTPUT)
+    {
+        // cout << "W" << i;
+        // if (i > 1) cout << " · ";
+
+                cout << "🔚 冒泡结束，最终序列: ";
         for (int v : cur) cout << v << " ";
+        cout << "（应为 1 2 3 4 ...）\n";
+
+        // ---------- 3. 正确的矩阵乘法顺序：W_last · ... · W1 ----------
+        cout << "📌 最终交换矩阵链 W = ";
+        for (int i = W_chain.size(); i >= 1; --i)
+        {
+            cout << "W" << i;
+            if (i > 1) cout << " · ";
+        }
         cout << "\n";
     }
-
-    cout << "🔚 冒泡结束，最终序列: ";
-    for (int v : cur) cout << v << " ";
-    cout << "（应为 1 2 3 4 ...）\n";
-
-    // ---------- 3. 正确的矩阵乘法顺序：W_last · ... · W1 ----------
-    cout << "📌 最终交换矩阵链 W = ";
-    for (int i = W_chain.size(); i >= 1; --i)
-    {
-        cout << "W" << i;
-        if (i > 1) cout << " · ";
-    }
-    cout << "\n";
+    //cout << "\n";
 
     // ⭐ Reverse：因为 Vec_chain_multiply 是按 chain[0]·chain[1]·… 乘
     reverse(W_chain.begin(), W_chain.end());
 
-    cout << "📌 原始真值表 × (W_last · ... · W1) = 重排真值表\n\n";
+    //cout << "📌 原始真值表 × (W_last · ... · W1) = 重排真值表\n\n";
+        if (!BD_MINIMAL_OUTPUT)
+        cout << "📌 原始真值表 × (W_last · ... · W1) = 重排真值表\n\n";
 
     // ---------- 4. 执行矩阵链 ----------
     vector<stp_data> Mf = binary_to_vec(f01);
@@ -201,14 +249,16 @@ static string apply_variable_reordering_swap(
     for (size_t i = 1; i < R.size(); ++i)
         out.push_back(R[i] ? '1' : '0');
 
-    cout << "📌 重排后的 f01（二进制） = " << out << "\n\n";
+    //cout << "📌 重排后的 f01（二进制） = " << out << "\n\n";
+        if (!BD_MINIMAL_OUTPUT)
+        cout << "📌 重排后的 f01（二进制） = " << out << "\n\n";
 
     return out;
 }
 
 
 // =====================================================
-// ⭐ k2=0 且 k3=1 特殊情况：直接从块序列提取全局 u
+// ⭐ k2=0 且 k3=1 特殊情况：直接从块序列提取全局 u,这里是将not节点融入顶层
 // =====================================================
 static vector<BiDecompResult>
 handle_k2_eq_0_k3_eq_1_special(const TT& in, int k1, int k3)
@@ -780,6 +830,9 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
             int k1 = n - k2 - k3;
             if (k1 <= 0) continue;
 
+            //std::cout << "\n========== 尝试 k1=" << k1 << ", k2=" << k2 << ", k3=" << k3 << " ==========\n";
+
+            if (!BD_MINIMAL_OUTPUT)
             std::cout << "\n========== 尝试 k1=" << k1 << ", k2=" << k2 << ", k3=" << k3 << " ==========\n";
 
             // 先试试不重排的情况（变量已经是 [Γ,Θ,Λ] 顺序）
@@ -787,7 +840,9 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
             if (!sub.empty())
             {
                 out = sub[0];
-                std::cout << "✓ 不需重排即可分解！\n";
+                //std::cout << "✓ 不需重排即可分解！\n";
+                                if (!BD_MINIMAL_OUTPUT)
+                    std::cout << "✓ 不需重排即可分解！\n";
                 return true;
             }
 
@@ -828,19 +883,36 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
                         continue;
 
                     // 打印当前尝试
-                    std::cout << "  尝试位置：Γ={";
-                    for (int p : Gamma_pos) std::cout << p << " ";
-                    std::cout << "}, Θ={";
-                    for (int p : Theta_pos) std::cout << p << " ";
-                    std::cout << "}, Λ={";
-                    for (int p : Lambda_pos) std::cout << p << " ";
-                    std::cout << "} → 变量 Γ={";
-                    for (int p : Gamma_pos) std::cout << in.order[p-1] << " ";
-                    std::cout << "}, Θ={";
-                    for (int p : Theta_pos) std::cout << in.order[p-1] << " ";
-                    std::cout << "}, Λ={";
-                    for (int p : Lambda_pos) std::cout << in.order[p-1] << " ";
-                    std::cout << "}\n";
+                    // std::cout << "  尝试位置：Γ={";
+                    // for (int p : Gamma_pos) std::cout << p << " ";
+                    // std::cout << "}, Θ={";
+                    // for (int p : Theta_pos) std::cout << p << " ";
+                    // std::cout << "}, Λ={";
+                    // for (int p : Lambda_pos) std::cout << p << " ";
+                    // std::cout << "} → 变量 Γ={";
+                    // for (int p : Gamma_pos) std::cout << in.order[p-1] << " ";
+                    // std::cout << "}, Θ={";
+                    // for (int p : Theta_pos) std::cout << in.order[p-1] << " ";
+                    // std::cout << "}, Λ={";
+                    // for (int p : Lambda_pos) std::cout << in.order[p-1] << " ";
+                    // std::cout << "}\n";
+                                        if (!BD_MINIMAL_OUTPUT)
+                    {
+                        // 打印当前尝试
+                        std::cout << "  尝试位置：Γ={";
+                        for (int p : Gamma_pos) std::cout << p << " ";
+                        std::cout << "}, Θ={";
+                        for (int p : Theta_pos) std::cout << p << " ";
+                        std::cout << "}, Λ={";
+                        for (int p : Lambda_pos) std::cout << p << " ";
+                        std::cout << "} → 变量 Γ={";
+                        for (int p : Gamma_pos) std::cout << in.order[p-1] << " ";
+                        std::cout << "}, Θ={";
+                        for (int p : Theta_pos) std::cout << in.order[p-1] << " ";
+                        std::cout << "}, Λ={";
+                        for (int p : Lambda_pos) std::cout << in.order[p-1] << " ";
+                        std::cout << "}\n";
+                    }
 
                     // ⭐ 重排真值表：按 [Γ, Θ, Λ] 的位置顺序
                     string reordered_f01 = apply_variable_reordering_swap(
@@ -850,8 +922,9 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
                     );
 
 
-                        std::cout << "📌 重排后的 f01（二进制） = " << reordered_f01 << "\n";
-
+                        //std::cout << "📌 重排后的 f01（二进制） = " << reordered_f01 << "\n";
+                        if (!BD_MINIMAL_OUTPUT)
+                            std::cout << "📌 重排后的 f01（二进制） = " << reordered_f01 << "\n";
 
                     // 构造重排后的 TT，order 保存原始变量编号
                     TT reordered_tt;
@@ -872,7 +945,9 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
                     if (!sub.empty())
                     {
                         out = sub[0];
-                        std::cout << "    ✓ 找到分解！\n";
+                        //std::cout << "    ✓ 找到分解！\n";
+                                                if (!BD_MINIMAL_OUTPUT)
+                            std::cout << "    ✓ 找到分解！\n";
                         return true;
                     }
 
@@ -921,23 +996,45 @@ if (!found)
 
 
     // 打印信息
-    std::cout << "\n" << string(depth*2, ' ') << "📌 深度 " << depth << " 双分解成功：\n";
-    std::cout << string(depth*2, ' ') << "   k1=" << result.k1
-              << "  k2=" << result.k2 << "  k3=" << result.k3 << "\n";
+    // std::cout << "\n" << string(depth*2, ' ') << "📌 深度 " << depth << " 双分解成功：\n";
+    // std::cout << string(depth*2, ' ') << "   k1=" << result.k1
+    //           << "  k2=" << result.k2 << "  k3=" << result.k3 << "\n";
 
-    std::cout << string(depth*2, ' ') << "   Γ = { ";
-    for (int v : result.Gamma) std::cout << v << " ";
-    std::cout << "}\n";
+    // std::cout << string(depth*2, ' ') << "   Γ = { ";
+    // for (int v : result.Gamma) std::cout << v << " ";
+    // std::cout << "}\n";
 
-    std::cout << string(depth*2, ' ') << "   Θ = { ";
-    for (int v : result.Theta) std::cout << v << " ";
-    std::cout << "}\n";
+    // std::cout << string(depth*2, ' ') << "   Θ = { ";
+    // for (int v : result.Theta) std::cout << v << " ";
+    // std::cout << "}\n";
 
-    std::cout << string(depth*2, ' ') << "   Λ = { ";
-    for (int v : result.Lambda) std::cout << v << " ";
-    std::cout << "}\n";
+    // std::cout << string(depth*2, ' ') << "   Λ = { ";
+    // for (int v : result.Lambda) std::cout << v << " ";
+    // std::cout << "}\n";
 
-    std::cout << string(depth*2, ' ') << "   F(u,v) = " << result.F01 << "\n";
+    // std::cout << string(depth*2, ' ') << "   F(u,v) = " << result.F01 << "\n";
+
+        if (BD_MINIMAL_OUTPUT)
+    {
+        std::cout << "\n" << string(depth*2, ' ') << "深度 " << depth
+                  << " 可分解真值表：" << f.f01 << "\n";
+    }
+    else
+    {
+        std::cout << "\n" << string(depth*2, ' ') << "📌 深度 " << depth << " 双分解成功：\n";
+        std::cout << string(depth*2, ' ') << "   k1=" << result.k1
+                  << "  k2=" << result.k2 << "  k3=" << result.k3 << "\n";
+        std::cout << string(depth*2, ' ') << "   Γ = { ";
+        for (int v : result.Gamma) std::cout << v << " ";
+        std::cout << "}\n";
+        std::cout << string(depth*2, ' ') << "   Θ = { ";
+        for (int v : result.Theta) std::cout << v << " ";
+        std::cout << "}\n";
+        std::cout << string(depth*2, ' ') << "   Λ = { ";
+        for (int v : result.Lambda) std::cout << v << " ";
+        std::cout << "}\n";
+        std::cout << string(depth*2, ' ') << "   F(u,v) = " << result.F01 << "\n";
+    }
 
     // 记录变量到 FINAL_VAR_ORDER（全是原始编号）
     for (int v : result.Gamma)
@@ -991,11 +1088,15 @@ if (!found)
 inline bool run_bi_decomp_recursive(const std::string& binary01)
 {
     bool enable_else_dec = ENABLE_ELSE_DEC;
-    RESET_NODE_GLOBAL(); 
+   // RESET_NODE_GLOBAL(); 
+       bool prev_minimal_output = BD_MINIMAL_OUTPUT;
+    RESET_NODE_GLOBAL();
     ENABLE_ELSE_DEC = enable_else_dec;
+        BD_MINIMAL_OUTPUT = true;
 
     if (!is_power_of_two(binary01.size())) {
         std::cout << "输入长度必须为 2^n\n";
+         BD_MINIMAL_OUTPUT = prev_minimal_output;
         return false;
     }
 
@@ -1062,5 +1163,6 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
     for (int v : FINAL_VAR_ORDER) std::cout << v << " ";
     std::cout << "}\n";
 
+    BD_MINIMAL_OUTPUT = prev_minimal_output;
     return true;
 }

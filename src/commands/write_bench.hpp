@@ -157,7 +157,7 @@ protected:
         // ====================================================
         std::cout << "✅ BENCH written to " << filename << "\n\n";
 
-        std::cout << "📋 变量映射（最高位→'a'）：\n";
+        std::cout << "📋 变量映射（最低位→'a'）：\n";
         //for (int v = ORIGINAL_VAR_COUNT; v >= 1; v--)
         for (int v = 1; v <= ORIGINAL_VAR_COUNT; v++)
             std::cout << "   变量" << v << " → '" 
