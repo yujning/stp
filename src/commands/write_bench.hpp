@@ -8,6 +8,7 @@
 #include <vector>
 #include <algorithm>
 #include <alice/alice.hpp>
+#include "../include/algorithms/truth_table.hpp"
 
 // 来自 DSD 的节点 & 变量顺序
 extern std::vector<DSDNode> NODE_LIST;
@@ -31,31 +32,6 @@ static std::string varname_from_id(int v)
 // ========================================================
 // 安全二进制转 hex（任意长度，不会崩）
 // ========================================================
-static std::string bin_to_hex(const std::string& bin)
-{
-    std::string b = bin;
-
-    while (b.size() % 4 != 0)
-        b = "0" + b;
-
-    static const char* hex_map = "0123456789abcdef";
-    std::string hex;
-    hex.reserve(b.size() / 4);
-
-    for (size_t i = 0; i < b.size(); i += 4)
-    {
-        int v = (b[i] - '0') * 8 +
-                (b[i+1] - '0') * 4 +
-                (b[i+2] - '0') * 2 +
-                (b[i+3] - '0');
-        hex.push_back(hex_map[v]);
-    }
-
-    while (hex.size() > 1 && hex[0] == '0')
-        hex.erase(hex.begin());
-
-    return hex;
-}
 
 // ========================================================
 // write_bench
