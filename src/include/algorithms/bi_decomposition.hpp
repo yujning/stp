@@ -17,6 +17,8 @@ using std::set;
 
 int new_node(const std::string&, const std::vector<int>&);
 inline bool BD_MINIMAL_OUTPUT = false;
+// When true, bi-decomposition search only considers cases with k2 == 0.
+inline bool BD_ONLY_K2_EQ_0 = false;
 
 // =====================================================
 // BiDecompResult
@@ -820,7 +822,9 @@ find_first_bi_decomposition(const TT& in, BiDecompResult& out)
     if ((int)in.order.size() != n) return false;
 
     // 枚举 k2 和 k3 的大小
-    for (int k2 = 0; k2 <= n - 2; ++k2)
+    const int k2_begin = BD_ONLY_K2_EQ_0 ? 0 : 0;
+    const int k2_end   = BD_ONLY_K2_EQ_0 ? 0 : (n - 2);
+    for (int k2 = k2_begin; k2 <= k2_end; ++k2)
     {
         int max_k3 = (n - k2) / 2;
 
@@ -1090,6 +1094,7 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
     bool enable_else_dec = ENABLE_ELSE_DEC;
    // RESET_NODE_GLOBAL(); 
        bool prev_minimal_output = BD_MINIMAL_OUTPUT;
+    bool prev_only_k2_eq_0 = BD_ONLY_K2_EQ_0;
     RESET_NODE_GLOBAL();
     ENABLE_ELSE_DEC = enable_else_dec;
         BD_MINIMAL_OUTPUT = true;
@@ -1097,6 +1102,7 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
     if (!is_power_of_two(binary01.size())) {
         std::cout << "输入长度必须为 2^n\n";
          BD_MINIMAL_OUTPUT = prev_minimal_output;
+        BD_ONLY_K2_EQ_0 = prev_only_k2_eq_0;
         return false;
     }
 
@@ -1164,5 +1170,6 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
     std::cout << "}\n";
 
     BD_MINIMAL_OUTPUT = prev_minimal_output;
+    BD_ONLY_K2_EQ_0 = prev_only_k2_eq_0;
     return true;
 }

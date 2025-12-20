@@ -174,6 +174,10 @@ public:
         add_option("-f, --factor", hex_input,
                    "truth table as hex string")->required();
 
+        // Only decompose k2=0 cases
+        add_flag("-d, --k2_zero", only_k2_zero,
+                 "only try bi-decomposition with k2=0");
+
         // ⭐ 加 else dec fallback 开关
         add_flag("-e, --else_dec", use_else_dec,
                  "enable else_dec fallback when BD fails");
@@ -185,6 +189,7 @@ protected:
         using clk = std::chrono::high_resolution_clock;
         
         use_else_dec = is_set("else_dec");
+        only_k2_zero = is_set("k2_zero");
         std::string hex = hex_input;
 
         if (!is_set("factor"))
@@ -228,6 +233,7 @@ protected:
         // 设置 其他分解模式（全局变量）
         // ------------------------------------------------------
         ENABLE_ELSE_DEC = use_else_dec;  // ⭐ 关键一步
+        BD_ONLY_K2_EQ_0 = only_k2_zero;
 
         auto t1 = clk::now();
 
@@ -246,6 +252,7 @@ protected:
 private:
     std::string hex_input{};
     bool use_else_dec = false;  // ⭐ 是否启用 其他分解
+    bool only_k2_zero = false;
 };
 
 ALICE_ADD_COMMAND(bd, "STP")
