@@ -13,6 +13,7 @@
 // 引入算法
 #include "../include/algorithms/stp_dsd.hpp"
 #include "../include/algorithms/reorder.hpp"   // all_reorders_char(raw)
+#include "../include/algorithms/strong_dsd.hpp"
 
 namespace alice
 {
@@ -27,6 +28,10 @@ namespace alice
 
             add_option("-x, --raw", raw_input,
                        "raw truth-table with don't care (x), length must be 2^n");
+            
+            
+            add_flag("-s, --strong",
+                     "use strong DSD: find first L=2^k with exactly two block types");
         }
 
     protected:
@@ -36,6 +41,7 @@ namespace alice
 
     bool use_raw = is_set("raw");
     bool use_hex = is_set("factor");
+    bool use_strong = is_set("strong");
 
     if (use_raw && use_hex)
     {
@@ -60,6 +66,29 @@ namespace alice
         }
         std::cout << "➡ Raw truth-table mode (-x)\n";
         std::cout << "Input = " << raw << "\n";
+
+        if (use_strong) {
+            if (raw.find_first_not_of("01") != std::string::npos) {
+                std::cout << "❌ Strong DSD requires raw input of only 0/1.\n";
+                return;
+            }
+            auto t1 = clk::now();
+            RESET_NODE_GLOBAL();
+            ORIGINAL_VAR_COUNT = static_cast<int>(std::log2(raw.size()));
+            std::vector<int> order;
+            for (int i = ORIGINAL_VAR_COUNT; i >= 1; --i) {
+                order.push_back(i);
+            }
+            for (int v = 1; v <= ORIGINAL_VAR_COUNT; ++v) {
+                new_in_node(v);
+            }
+            build_strong_dsd_nodes(raw, order, 0);
+            auto t2 = clk::now();
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+            std::cout << "⏱ Strong DSD time = " << us << " us\n";
+            return;
+        }
+
 
         auto t1 = clk::now();
         all_reorders_char(raw);
@@ -107,6 +136,25 @@ namespace alice
 
     std::cout << "📘 Hex " << hex << " => binary " << binary
               << " (len = " << binary.size() << " vars = " << num_vars << ")\n";
+
+    
+    if (use_strong) {
+        auto t1 = clk::now();
+        RESET_NODE_GLOBAL();
+        ORIGINAL_VAR_COUNT = static_cast<int>(std::log2(binary.size()));
+        std::vector<int> order;
+        for (int i = ORIGINAL_VAR_COUNT; i >= 1; --i) {
+            order.push_back(i);
+        }
+        for (int v = 1; v <= ORIGINAL_VAR_COUNT; ++v) {
+            new_in_node(v);
+        }
+        build_strong_dsd_nodes(binary, order, 0);
+        auto t2 = clk::now();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        std::cout << "⏱ Strong DSD time = " << us << " us\n";
+        return;
+    }
 
     // 计时
     auto t1 = clk::now();

@@ -176,7 +176,7 @@ public:
 
         // Only decompose k2=0 cases
         add_flag("-d, --k2_zero", only_k2_zero,
-                 "only try bi-decomposition with k2=0");
+                 "only try bi-decomposition with k2=0,dsd,顶层为2输入");
 
         // ⭐ 加 else dec fallback 开关
         add_flag("-e, --else_dec", use_else_dec,
