@@ -31,7 +31,7 @@ namespace alice
             
             
             add_flag("-s, --strong",
-                     "use strong DSD: find first L=2^k with exactly two block types");
+                     "use strong DSD: find first L=2^k with exactly two block types，ACD ");
         }
 
     protected:

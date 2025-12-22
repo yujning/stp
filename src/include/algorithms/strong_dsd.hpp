@@ -183,7 +183,8 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
         return x.var < y.var;
     });
 
-    int max_k = n  / 2; // ceil(n/2)
+    int max_k = (n + 1) / 2;
+
 
     for (int k = max_k; k >= 1; --k)
     {
@@ -221,9 +222,45 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
             // print candidate split (variables only)
             print_candidate_info(depth_for_print, k, mx_vars_msb2lsb, my_vars_msb2lsb);
 
+            
+
             int m = n - k;
             uint64_t my_count = 1ull << m;
             uint64_t L = 1ull << k;
+
+//             if (STRONG_DSD_DEBUG_PRINT)
+// {
+//     std::string reordered;
+//     reordered.reserve((size_t)my_count * (size_t)L);
+
+//     for (uint64_t y = 0; y < my_count; ++y)
+//     {
+//         std::string block = extract_block_for_mx(
+//             mf, n, mx_pos, my_pos, y
+//         );
+//         reordered += block;
+//     }
+
+//     std::vector<int> reordered_order;
+//     reordered_order.reserve(n);
+//     reordered_order.insert(
+//         reordered_order.end(),
+//         my_vars_msb2lsb.begin(),
+//         my_vars_msb2lsb.end()
+//     );
+//     reordered_order.insert(
+//         reordered_order.end(),
+//         mx_vars_msb2lsb.begin(),
+//         mx_vars_msb2lsb.end()
+//     );
+
+//     print_tt_with_order(
+//         "候选 split 的重排 TT (My|Mx)",
+//         reordered,
+//         reordered_order,
+//         depth_for_print
+//     );
+// }
 
             std::unordered_map<std::string, int> block_index;
             std::vector<std::string> blocks;
@@ -256,6 +293,12 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
             // non-degenerate: exactly 2 blocks
             if (!too_many && blocks.size() == 2)
             {
+
+                 // ★ 新增：拒绝 |My| == 1 的 split
+                if (my_vars_msb2lsb.size() == 1) {
+                    // 不接受这个 split，继续枚举
+                    goto NEXT_COMBINATION;
+                }
                 out.found = true;
                 out.dsd.found = true;
                 out.dsd.L = (size_t)L;
@@ -297,6 +340,7 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
                 return out;
             }
 
+            NEXT_COMBINATION:
             if (!next_combination(comb, (int)vp.size())) break;
         }
     }
@@ -310,42 +354,90 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
 inline std::vector<int>
 make_children_from_order_with_placeholder(
     const std::vector<int>& order,
-    int placeholder_id)
+    const std::unordered_map<int, int>* placeholder_nodes,
+    const std::vector<int>* local_to_global)
 {
     std::vector<int> children;
     children.reserve(order.size());
-    for (auto it = order.rbegin(); it != order.rend(); ++it) {
-        int var_id = *it;
-        if (var_id == 0) children.push_back(placeholder_id);
-        else children.push_back(new_in_node(var_id));
+
+    // 关键：按 MSB -> LSB 直接放
+    for (int var_id : order) {
+
+        if (placeholder_nodes) {
+            auto ph = placeholder_nodes->find(var_id);
+            if (ph != placeholder_nodes->end()) {
+                children.push_back(ph->second);
+                continue;
+            }
+        }
+
+        int global_var_id = var_id;
+        if (local_to_global &&
+            var_id >= 0 &&
+            var_id < (int)local_to_global->size())
+        {
+            int mapped = (*local_to_global)[var_id];
+            if (mapped != 0) global_var_id = mapped;
+        }
+
+        children.push_back(new_in_node(global_var_id));
     }
+
     return children;
+}
+
+inline int resolve_global_var_id(
+    int local_id,
+    const std::vector<int>* local_to_global)
+{
+    if (local_to_global && local_id >= 0 && local_id < (int)local_to_global->size()) {
+        int mapped = (*local_to_global)[local_id];
+        if (mapped != 0) return mapped;
+    }
+    return local_id;
 }
 
 // =====================================================
 // ★ Recursive Strong DSD (subset enumeration)
 // =====================================================
-inline int build_strong_dsd_nodes(
+inline int build_strong_dsd_nodes_impl(
     const std::string& mf,
     const std::vector<int>& order,
-    int depth = 0)
+    int depth,
+    const std::vector<int>* local_to_global,
+    const std::unordered_map<int, int>* placeholder_nodes)
 {
     // 入口：打印当前 TT + order
     print_tt_with_order("进入 Strong DSD", mf, order, depth);
 
     if (mf.size() <= 4) {
         print_tt_with_order("⏹ Stop (size <= 4)", mf, order, depth);
-        auto children = make_children_from_order_with_placeholder(order, 0);
+               auto children = make_children_from_order_with_placeholder(
+            order, placeholder_nodes, local_to_global);
         return new_node(mf, children);
     }
 
     // ① subset-enum split, pass depth for aligned prints
     StrongDsdSplit split = run_strong_dsd_by_mx_subset(mf, order, depth);
 
+    // ===== 关键：拒绝 |My| == 1 的 split（必须在使用 split 之前）=====
+if (split.found && split.my_vars_msb2lsb.size() == 1) {
+    std::string indent((size_t)depth * 2, ' ');
+    std::cout << indent
+              << "⚠️ Skip split: |My| == 1 (not accepted)\n";
+
+    auto children = make_children_from_order_with_placeholder(
+        order, placeholder_nodes, local_to_global
+    );
+    return new_node(mf, children);
+}
+
+
     if (!split.found) {
         std::string indent((size_t)depth * 2, ' ');
         std::cout << indent << "❌ Strong DSD: no valid split\n";
-        auto children = make_children_from_order_with_placeholder(order, 0);
+        auto children = make_children_from_order_with_placeholder(
+        order, placeholder_nodes, local_to_global);
         return new_node(mf, children);
     }
 
@@ -368,30 +460,71 @@ inline int build_strong_dsd_nodes(
     // ② recurse on My
     // IMPORTANT: your existing children construction reverses order,
     // so keep the same convention: reverse before passing down.
-    std::vector<int> order_my = split.my_vars_msb2lsb;
-    std::reverse(order_my.begin(), order_my.end());
-    print_tt_with_order("当前命中重排后的真值表 (My|Mx)", split.reordered_tt,[&]{
-        std::vector<int> ord = split.my_vars_msb2lsb;
-        ord.insert(ord.end(),
-                   split.mx_vars_msb2lsb.begin(),
-                   split.mx_vars_msb2lsb.end());
-        return ord;
-    }(),depth);
+// ===== ① recurse on My (MSB->LSB, no reverse) =====
+const std::vector<int>& order_my = split.my_vars_msb2lsb;
 
+print_tt_with_order("递归进入 My", result.My, order_my, depth);
 
-    print_tt_with_order("递归进入 My", result.My, order_my, depth);
+int my_id = build_strong_dsd_nodes_impl(
+    result.My,
+    order_my,
+    depth + 1,
+    local_to_global,
+    placeholder_nodes
+);
 
-    int my_id = build_strong_dsd_nodes(result.My, order_my, depth + 1);
+// ===== ② recurse on Mx =====
+// |Mx| = k
+int k = (int)split.mx_vars_msb2lsb.size();
+int my_local_id = k + 1;
 
-    // ③ current node: Mx vars + placeholder(0)
-        std::vector<int> order_mx;
-    order_mx.push_back(0);  // placeholder = new_n7（语义上最高位）
-    for (int v : split.mx_vars_msb2lsb)
-        order_mx.push_back(v); // 6,5,4
+// order: (my_local, k, k-1, ..., 1)
+std::vector<int> order_mx;
+order_mx.reserve(k + 1);
+order_mx.push_back(my_local_id);
+for (int i = k; i >= 1; --i) order_mx.push_back(i);
 
-    // ★ 关键：整体 reverse 一次
-    std::reverse(order_mx.begin(), order_mx.end());
+// placeholder + local_to_global
+std::unordered_map<int, int> placeholder_nodes_mx;
+std::vector<int> local_to_global_mx(my_local_id + 1, 0);
 
-    auto children = make_children_from_order_with_placeholder(order_mx, my_id);
-    return new_node(result.Mx, children);
+// My 占据 local_id = k+1
+placeholder_nodes_mx[my_local_id] = my_id;
+
+// 继承父 placeholder
+const std::unordered_map<int, int> empty_ph;
+const auto& parent_ph = placeholder_nodes ? *placeholder_nodes : empty_ph;
+
+// Mx 变量映射：MSB->LSB
+for (int i = 0; i < k; ++i) {
+    int old_id = split.mx_vars_msb2lsb[i];
+    int new_id = k - i;
+
+    auto it = parent_ph.find(old_id);
+    if (it != parent_ph.end()) {
+        placeholder_nodes_mx[new_id] = it->second;
+    } else {
+        local_to_global_mx[new_id] =
+            resolve_global_var_id(old_id, local_to_global);
+    }
+}
+
+print_tt_with_order("递归进入 Mx", result.Mx, order_mx, depth);
+
+return build_strong_dsd_nodes_impl(
+    result.Mx,
+    order_mx,
+    depth + 1,
+    &local_to_global_mx,
+    &placeholder_nodes_mx
+);
+
+}
+
+inline int build_strong_dsd_nodes(
+    const std::string& mf,
+    const std::vector<int>& order,
+    int depth = 0)
+{
+    return build_strong_dsd_nodes_impl(mf, order, depth, nullptr, nullptr);
 }
