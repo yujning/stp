@@ -91,7 +91,7 @@ namespace alice
 
 
         auto t1 = clk::now();
-        all_reorders_char(raw);
+        all_reorders(raw);
         auto t2 = clk::now();
 
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();

@@ -38,6 +38,8 @@ struct TT {
     vector<int> order;
 };
 
+
+
 // ================================================
 // make_tt_from01
 // ================================================
@@ -552,53 +554,28 @@ static bool factor_once_with_reorder_01(
     int n = log2(len);
     int r = n / 2;
 
-    auto Mf = binary_to_vec(bin);
-
-    vector<int> s_order;
-    s_order.reserve(r);
     for (int s = r; s >= 1; --s)
-        s_order.push_back(s);
-        
-
-    for (int s : s_order)
     {
         vector<bool> v(n);
         fill(v.begin(), v.begin() + s, true);
 
         do {
-            vector<int> Lambda_bits;
-            for (int i = 0; i < n; i++)
-                if (v[i]) Lambda_bits.push_back(i);
-
             vector<int> Lambda_j;
-            for (int bit : Lambda_bits)
-                Lambda_j.push_back(n - bit);
-            
+            for (int i = 0; i < n; i++)
+                if (v[i]) Lambda_j.push_back(n - i);
+
             sort(Lambda_j.begin(), Lambda_j.end());
 
-            cout << "Λ = { ";
-            for (int j : Lambda_j) cout << j << " ";
-            cout << "}";
+            // ===== 用索引映射替代 STP 重排 =====
+            vector<bool> inLam(n+1,false);
+            for(int j:Lambda_j) inLam[j]=true;
 
-            // 生成 swap-chain
-            vector<vector<stp_data>> chain;
+            vector<int> new_order;
+            for(int j=1;j<=n;j++) if(!inLam[j]) new_order.push_back(j);
+            for(int j:Lambda_j) new_order.push_back(j);
 
-            for (int k = s; k >= 1; k--) {
-                int j_k = Lambda_j[k - 1];
-                int exp = j_k + (s - 1) - k;
-                chain.push_back(generate_swap_vec(2, 1 << exp));
-            }
-            chain.push_back(generate_swap_vec(1 << (n - s), 1 << s));
-
-            auto Mperm  = Vec_chain_multiply(chain, false);
-            auto result = Vec_semi_tensor_product(Mf, Mperm);
-
-            string reordered;
-            reordered.reserve(len);
-            for (size_t i = 1; i < result.size(); i++)
-                reordered.push_back(result[i] ? '1' : '0');
-
-            cout << " -> reordered = " << reordered << "\n";
+            string reordered =
+                reorder_by_index_mapping(bin, n, new_order);
 
             int cid = theorem33_case_id(reordered, s);
             if (cid == 0) continue;
@@ -790,7 +767,8 @@ inline bool run_dsd_recursive(const std::string& binary01)
     root.order.resize(n);
 
     for (int i = 0; i < n; ++i)
-        root.order[i] = i + 1;  // 位置 (i+1) 对应变量 (i+1)
+        root.order[i] = n - i;   // 6,5,4,3,2,1
+
 
     std::cout << "输入 = " << binary01 << " (n=" << n << ")\n";
     std::cout << "初始映射：";
