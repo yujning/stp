@@ -14,7 +14,7 @@
 #include "../include/algorithms/stp_dsd.hpp"
 #include "../include/algorithms/reorder.hpp"   // all_reorders_char(raw)
 #include "../include/algorithms/strong_dsd.hpp"
-
+#include "../include/algorithms/mix_dsd.hpp"
 namespace alice
 {
     class dsd_command : public command
@@ -32,6 +32,10 @@ namespace alice
             
             add_flag("-s, --strong",
                      "use strong DSD: find first L=2^k with exactly two block types，ACD ");
+
+
+            add_flag("-m, --mix",
+             "prefer DSD (-f) per layer, fallback to strong DSD when needed");
         }
 
     protected:
@@ -42,12 +46,20 @@ namespace alice
     bool use_raw = is_set("raw");
     bool use_hex = is_set("factor");
     bool use_strong = is_set("strong");
+    bool use_mix = is_set("mix");
 
     if (use_raw && use_hex)
     {
         std::cout << "❌ Options -f and -x cannot be used together.\n";
         return;
     }
+
+        if (use_strong && use_mix)
+    {
+        std::cout << "❌ Options -s and -m cannot be used together.\n";
+        return;
+    }
+
 
     // ------------ RAW MODE ------------
     if (use_raw)
@@ -86,6 +98,20 @@ namespace alice
             auto t2 = clk::now();
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
             std::cout << "⏱ Strong DSD time = " << us << " us\n";
+            return;
+        }
+
+
+        if (use_mix) {
+            if (raw.find_first_not_of("01") != std::string::npos) {
+                std::cout << "❌ Mixed DSD requires raw input of only 0/1.\n";
+                return;
+            }
+            auto t1 = clk::now();
+            run_dsd_recursive_mix(raw);
+            auto t2 = clk::now();
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+            std::cout << "⏱ Mixed DSD time = " << us << " us\n";
             return;
         }
 
@@ -155,6 +181,16 @@ namespace alice
         std::cout << "⏱ Strong DSD time = " << us << " us\n";
         return;
     }
+
+    if (use_mix) {
+        auto t1 = clk::now();
+        run_dsd_recursive_mix(binary);
+        auto t2 = clk::now();
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        std::cout << "⏱ Mixed DSD time = " << us << " us\n";
+        return;
+    }
+
 
     // 计时
     auto t1 = clk::now();
