@@ -64,7 +64,7 @@ public:
     explicit lut_resyn_command(const environment::ptr& env)
         : command(env, "Resynthesize LUT netlist to 2-LUT")
     {
-        add_option("file", input_file, "BENCH file")->required();
+        add_option("file", input_file, "BENCH file");
         add_option("-o,--output", output_file, "output BENCH file")->required();
         add_flag("-e,--else_dec", use_else_dec,
                  "enable else_dec fallback when BD fails");
@@ -73,13 +73,37 @@ public:
 protected:
     void execute() override
     {
-        if (input_file.empty() || output_file.empty())
+        if (output_file.empty())
         {
-            std::cout << "❌ Input/output file missing\n";
+             std::cout << "❌ Output file missing\n";
             return;
         }
 
-        BenchNetlist net = read_bench_lut(input_file);
+               BenchNetlist net;
+        if (input_file.empty())
+        {
+            if (!BENCH_LOADED)
+            {
+                std::cout << "❌ No BENCH loaded. Run read_bench or provide file.\n";
+                return;
+            }
+            net = BENCH_NETLIST;
+        }
+        else
+        {
+            try
+            {
+                net = read_bench_lut(input_file);
+            }
+            catch (const std::exception& e)
+            {
+                std::cout << "❌ " << e.what() << "\n";
+                return;
+            }
+            BENCH_NETLIST = net;
+            BENCH_LOADED = true;
+            BENCH_SOURCE = input_file;
+        }
 
         std::ofstream fout(output_file);
         if (!fout)

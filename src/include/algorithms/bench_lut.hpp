@@ -29,6 +29,12 @@ struct BenchNetlist
     std::unordered_map<std::string, LutNode> luts;
 };
 
+// ---------------- BENCH 缓存 ----------------
+inline BenchNetlist BENCH_NETLIST{};
+inline bool BENCH_LOADED = false;
+inline std::string BENCH_SOURCE{};
+
+
 inline std::vector<std::string> tokenize( const std::string& line )
 {
     std::vector<std::string> tokens;

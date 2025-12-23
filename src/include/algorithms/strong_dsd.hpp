@@ -183,10 +183,14 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
         return x.var < y.var;
     });
 
-    int max_k = (n + 1) / 2;
+    //int max_k = (n + 1) / 2;
 
 
-    for (int k = max_k; k >= 1; --k)
+    int min_k = 1;          // |Mx| >= 1
+    int max_k = n - 2;      // |My| >= 2
+
+    for (int k = max_k; k >= min_k; --k)   
+
     {
         std::vector<int> comb(k);
         for (int i = 0; i < k; ++i) comb[i] = i;
@@ -228,39 +232,39 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
             uint64_t my_count = 1ull << m;
             uint64_t L = 1ull << k;
 
-//             if (STRONG_DSD_DEBUG_PRINT)
-// {
-//     std::string reordered;
-//     reordered.reserve((size_t)my_count * (size_t)L);
+            if (STRONG_DSD_DEBUG_PRINT)
+{
+    std::string reordered;
+    reordered.reserve((size_t)my_count * (size_t)L);
 
-//     for (uint64_t y = 0; y < my_count; ++y)
-//     {
-//         std::string block = extract_block_for_mx(
-//             mf, n, mx_pos, my_pos, y
-//         );
-//         reordered += block;
-//     }
+    for (uint64_t y = 0; y < my_count; ++y)
+    {
+        std::string block = extract_block_for_mx(
+            mf, n, mx_pos, my_pos, y
+        );
+        reordered += block;
+    }
 
-//     std::vector<int> reordered_order;
-//     reordered_order.reserve(n);
-//     reordered_order.insert(
-//         reordered_order.end(),
-//         my_vars_msb2lsb.begin(),
-//         my_vars_msb2lsb.end()
-//     );
-//     reordered_order.insert(
-//         reordered_order.end(),
-//         mx_vars_msb2lsb.begin(),
-//         mx_vars_msb2lsb.end()
-//     );
+    std::vector<int> reordered_order;
+    reordered_order.reserve(n);
+    reordered_order.insert(
+        reordered_order.end(),
+        my_vars_msb2lsb.begin(),
+        my_vars_msb2lsb.end()
+    );
+    reordered_order.insert(
+        reordered_order.end(),
+        mx_vars_msb2lsb.begin(),
+        mx_vars_msb2lsb.end()
+    );
 
-//     print_tt_with_order(
-//         "候选 split 的重排 TT (My|Mx)",
-//         reordered,
-//         reordered_order,
-//         depth_for_print
-//     );
-// }
+    print_tt_with_order(
+        "候选 split 的重排 TT (My|Mx)",
+        reordered,
+        reordered_order,
+        depth_for_print
+    );
+}
 
             std::unordered_map<std::string, int> block_index;
             std::vector<std::string> blocks;
@@ -294,11 +298,11 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
             if (!too_many && blocks.size() == 2)
             {
 
-                 // ★ 新增：拒绝 |My| == 1 的 split
-                if (my_vars_msb2lsb.size() == 1) {
-                    // 不接受这个 split，继续枚举
-                    goto NEXT_COMBINATION;
-                }
+                //  // ★ 新增：拒绝 |My| == 1 的 split
+                // if (my_vars_msb2lsb.size() == 1) {
+                //     // 不接受这个 split，继续枚举
+                //     goto NEXT_COMBINATION;
+                // }
                 out.found = true;
                 out.dsd.found = true;
                 out.dsd.L = (size_t)L;
@@ -421,16 +425,16 @@ inline int build_strong_dsd_nodes_impl(
     StrongDsdSplit split = run_strong_dsd_by_mx_subset(mf, order, depth);
 
     // ===== 关键：拒绝 |My| == 1 的 split（必须在使用 split 之前）=====
-if (split.found && split.my_vars_msb2lsb.size() == 1) {
-    std::string indent((size_t)depth * 2, ' ');
-    std::cout << indent
-              << "⚠️ Skip split: |My| == 1 (not accepted)\n";
+// if (split.found && split.my_vars_msb2lsb.size() == 1) {
+//     std::string indent((size_t)depth * 2, ' ');
+//     std::cout << indent
+//               << "⚠️ Skip split: |My| == 1 (not accepted)\n";
 
-    auto children = make_children_from_order_with_placeholder(
-        order, placeholder_nodes, local_to_global
-    );
-    return new_node(mf, children);
-}
+//     auto children = make_children_from_order_with_placeholder(
+//         order, placeholder_nodes, local_to_global
+//     );
+//     return new_node(mf, children);
+// }
 
 
     if (!split.found) {

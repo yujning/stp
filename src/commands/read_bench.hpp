@@ -21,6 +21,10 @@ protected:
     void execute() override
     {
         BenchNetlist net = read_bench_lut(filename);
+        
+        BENCH_NETLIST = net;
+        BENCH_LOADED = true;
+        BENCH_SOURCE = filename;
 
         std::cout << "📥 BENCH parsed\n";
         std::cout << "  Inputs  : " << net.inputs.size() << "\n";
