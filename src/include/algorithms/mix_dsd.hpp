@@ -1,16 +1,108 @@
 #pragma once
 
+#include <algorithm>
+#include <iostream>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "stp_dsd.hpp"
 #include "strong_dsd.hpp"
 
 // =====================================================
-// Mixed DSD: prefer normal DSD, fallback to strong DSD
+// Mixed DSD: prefer normal DSD, fallback to strong DSD per layer
 // =====================================================
-inline int dsd_factor_mix(const TT& f, int depth = 0)
+inline void add_final_var_order(int var_id)
+{
+    if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) ==
+        FINAL_VAR_ORDER.end())
+    {
+        FINAL_VAR_ORDER.push_back(var_id);
+    }
+}
+
+inline int resolve_leaf_node(
+    int var_id,
+    const std::unordered_map<int, int>* placeholder_nodes,
+    const std::vector<int>* local_to_global)
+{
+    if (placeholder_nodes) {
+        auto ph = placeholder_nodes->find(var_id);
+        if (ph != placeholder_nodes->end()) {
+            return ph->second;
+        }
+    }
+
+    int global_var_id = resolve_global_var_id(var_id, local_to_global);
+    return new_in_node(global_var_id);
+}
+
+inline void record_final_var_order(
+    int var_id,
+    const std::unordered_map<int, int>* placeholder_nodes,
+    const std::vector<int>* local_to_global)
+{
+    if (placeholder_nodes) {
+        auto ph = placeholder_nodes->find(var_id);
+        if (ph != placeholder_nodes->end()) {
+            return;
+        }
+    }
+
+    int global_var_id = resolve_global_var_id(var_id, local_to_global);
+    add_final_var_order(global_var_id);
+}
+
+inline int build_small_tree_mix(
+    const TT& t,
+    const std::vector<int>* local_to_global,
+    const std::unordered_map<int, int>* placeholder_nodes)
+{
+    int nv = t.order.size();
+
+    if (nv == 1)
+    {
+        int var_id = t.order[0];
+        int leaf = resolve_leaf_node(var_id, placeholder_nodes, local_to_global);
+        record_final_var_order(var_id, placeholder_nodes, local_to_global);
+
+        if (t.f01 == "10") return leaf;                  // identity
+        if (t.f01 == "01") return new_node("01", {leaf}); // NOT
+        if (t.f01 == "00") return new_node("0", {});      // const 0
+        if (t.f01 == "11") return new_node("1", {});      // const 1
+        return leaf;
+    }
+
+    if (nv == 2)
+    {
+        for (int var_id : t.order)
+            record_final_var_order(var_id, placeholder_nodes, local_to_global);
+
+        int a = resolve_leaf_node(t.order[0], placeholder_nodes, local_to_global);
+        int b = resolve_leaf_node(t.order[1], placeholder_nodes, local_to_global);
+        return new_node(t.f01, {a, b});
+    }
+
+    std::vector<int> child_ids;
+    child_ids.reserve(nv);
+    for (int var_id : t.order)
+    {
+        record_final_var_order(var_id, placeholder_nodes, local_to_global);
+        child_ids.push_back(resolve_leaf_node(var_id, placeholder_nodes, local_to_global));
+    }
+
+    return new_node(t.f01, child_ids);
+}
+
+inline int dsd_factor_mix_impl(
+    const TT& f,
+    int depth,
+    const std::vector<int>* local_to_global,
+    const std::unordered_map<int, int>* placeholder_nodes)
 {
     int len = f.f01.size();
     if (len <= 4)
-        return build_small_tree(f);
+        return build_small_tree_mix(f, local_to_global, placeholder_nodes);
 
     std::string MF12;
     TT phi_tt, psi_tt;
@@ -42,15 +134,66 @@ inline int dsd_factor_mix(const TT& f, int depth = 0)
             std::cout << "位置" << (i + 1) << "→变量" << psi_original_vars[i] << " ";
         std::cout << "\n\n";
 
-        int L = dsd_factor_mix(phi_tt, depth + 1);
-        int R = dsd_factor_mix(psi_tt, depth + 1);
+        int L = dsd_factor_mix_impl(phi_tt, depth + 1, local_to_global, placeholder_nodes);
+        int R = dsd_factor_mix_impl(psi_tt, depth + 1, local_to_global, placeholder_nodes);
 
         return new_node(MF12, {L, R});
     }
 
     std::cout << "⚠️ DSD -f failed at depth " << depth
-              << ", fallback to strong DSD.\n";
-    return build_strong_dsd_nodes(f.f01, f.order, depth);
+              << ", fallback to strong DSD (one layer).\n";
+
+    StrongDsdSplit split = run_strong_dsd_by_mx_subset(f.f01, f.order, depth);
+    if (!split.found) {
+        return build_small_tree_mix(f, local_to_global, placeholder_nodes);
+    }
+
+    const auto& result = split.dsd;
+
+    TT my_tt;
+    my_tt.f01 = result.My;
+    my_tt.order = split.my_vars_msb2lsb;
+
+    int my_id = dsd_factor_mix_impl(my_tt, depth + 1, local_to_global, placeholder_nodes);
+
+    int k = (int)split.mx_vars_msb2lsb.size();
+    int my_local_id = k + 1;
+
+    std::vector<int> order_mx;
+    order_mx.reserve(k + 1);
+    order_mx.push_back(my_local_id);
+    for (int i = k; i >= 1; --i) order_mx.push_back(i);
+
+    std::unordered_map<int, int> placeholder_nodes_mx;
+    std::vector<int> local_to_global_mx(my_local_id + 1, 0);
+
+    placeholder_nodes_mx[my_local_id] = my_id;
+
+    const std::unordered_map<int, int> empty_ph;
+    const auto& parent_ph = placeholder_nodes ? *placeholder_nodes : empty_ph;
+
+    for (int i = 0; i < k; ++i) {
+        int old_id = split.mx_vars_msb2lsb[i];
+        int new_id = k - i;
+
+        auto it = parent_ph.find(old_id);
+        if (it != parent_ph.end()) {
+            placeholder_nodes_mx[new_id] = it->second;
+        } else {
+            local_to_global_mx[new_id] =
+                resolve_global_var_id(old_id, local_to_global);
+        }
+    }
+
+    TT mx_tt;
+    mx_tt.f01 = result.Mx;
+    mx_tt.order = order_mx;
+
+    return dsd_factor_mix_impl(
+        mx_tt,
+        depth + 1,
+        &local_to_global_mx,
+        &placeholder_nodes_mx);
 }
 
 inline bool run_dsd_recursive_mix(const std::string& binary01)
@@ -86,7 +229,7 @@ inline bool run_dsd_recursive_mix(const std::string& binary01)
         new_in_node(v);
 
     TT root_shrunk = shrink_to_support(root);
-    int root_id = dsd_factor_mix(root_shrunk);
+    int root_id = dsd_factor_mix_impl(root_shrunk, 0, nullptr, nullptr);
 
     std::cout << "===== 最终 DSD 节点列表 =====\n";
     for (auto& nd : NODE_LIST)
