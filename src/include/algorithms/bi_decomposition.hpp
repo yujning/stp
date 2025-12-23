@@ -96,6 +96,7 @@ static string reverse_bits(const string& s)
     return r;
 }
 
+
 //kitty重排的真值表
 
 // =====================================================
@@ -105,155 +106,65 @@ static string reverse_bits(const string& s)
 // ⭐ 变量重排（使用交换矩阵链 W，满足 W · target = 标准顺序）
 // target = Γ,Θ,Λ 拼接成的序列，如 {3,4,1,2}
 // =====================================================
+// =====================================================
+// ★ 变量重排（索引映射版，替代冒泡 / SWAP / STP）
+// 接口保持不变！
+// =====================================================
 static string apply_variable_reordering_swap(
     const string& f01,
     int n,
-    const vector<int>& Gamma_indices,
-    const vector<int>& Theta_indices,
-    const vector<int>& Lambda_indices,
+    const vector<int>& Gamma_indices,   // 1-based positions
+    const vector<int>& Theta_indices,   // 1-based positions
+    const vector<int>& Lambda_indices,  // 1-based positions
     int k1, int k2, int k3)
 {
-    // ---------- 1. 目标序列 ----------
-    vector<int> target;
-    for (int x : Gamma_indices) target.push_back(x);
-    for (int x : Theta_indices) target.push_back(x);
-    for (int x : Lambda_indices) target.push_back(x);
+    // ---------- 1. 构造 new_order（原始变量编号，MSB->LSB） ----------
+    vector<int> new_order;
+    new_order.reserve(n);
 
-    // cout << "🔁 构造交换矩阵链（冒泡法）:\n";
-    // cout << "  起始序列（目标序列）: ";
-    // for (int v : target) cout << v << " ";
-    // cout << "\n  终点序列: 1 2 3 ... " << n << "\n";
+    // 原始变量顺序是：in.order = 位置1..n
+    // 这里 indices 是“位置”，不是变量编号
+    for (int p : Gamma_indices)  new_order.push_back(p);
+    for (int p : Theta_indices)  new_order.push_back(p);
+    for (int p : Lambda_indices) new_order.push_back(p);
 
-        if (!BD_MINIMAL_OUTPUT)
-    {
-        cout << "🔁 构造交换矩阵链（冒泡法）：\n";
-        cout << "  起始序列（目标序列）: ";
-        for (int v : target) cout << v << " ";
-        cout << "\n  终点序列: 1 2 3 ... " << n << "\n";
-    }
+    // new_order 现在是【原始位置编号】
+    // 我们需要把它映射为【变量编号顺序】
+    // 即：变量编号 = 原 TT 的 order[pos-1]
 
-    // 当前序列（要不断被冒泡变成 1,2,3,...,n）
-    vector<int> cur = target;
+    // ⚠️ 关键：f01 对应的原始变量顺序是 1..n（MSB->LSB）
+    vector<int> old_order(n);
+    for (int i = 0; i < n; ++i)
+        old_order[i] = i + 1;
 
-    // ---------- 2. 构造 W-chain ----------
-    vector<vector<stp_data>> W_chain;
+    vector<int> new_var_order(n);
+    for (int i = 0; i < n; ++i)
+        new_var_order[i] = new_order[i];
 
-    // 按从大到小变量冒泡（你要求的方式）
-    for (int var = n; var >= 1; --var)
-    {
-        // 找 var 在当前序列中的位置
-        int pos = -1;
-        for (int i = 0; i < n; i++)
-            if (cur[i] == var) { pos = i; break; }
-
-        // if (pos == -1) {
-        //     cout << "  ⚠️ 未找到变量 " << var << "\n";
-
-                if (pos == -1)
-        {
-            if (!BD_MINIMAL_OUTPUT)
-                cout << "  ⚠️ 未找到变量 " << var << "\n";
-            continue;
-        }
-
-        // 已在第一位则跳过
-        // if (pos == 0) {
-        //     cout << "  • 变量 " << var << " 已在第一位，跳过\n";
-
-                if (pos == 0)
-        {
-            if (!BD_MINIMAL_OUTPUT)
-                cout << "  • 变量 " << var << " 已在第一位，跳过\n";
-            continue;
-        }
-
-        // 需要跨过 pos 个元素
-        int d = pos;               // 变量移动距离
-        int P = (1 << d);          // W[P,2]
-        int Q = 2;
-
-        // cout << "  • W[" << P << ", " << Q << "] : 把变量 " << var
-        //      << " 从位置 " << (pos+1)
-        //      << " 移到第一位\n";
-        // cout << "    当前序列: ";
-        // for (int v : cur) cout << v << " ";
-                if (!BD_MINIMAL_OUTPUT)
-        {
-            cout << "  • W[" << P << ", " << Q << "] : 把变量 " << var
-                 << " 从位置 " << (pos+1)
-                 << " 移到第一位\n";
-
-                             cout << "    当前序列: ";
-            for (int v : cur) cout << v << " ";
-        }
-
-
-
-        // 记录该 W
-        W_chain.push_back(generate_swap_vec(P, Q));
-
-        // 在序列上执行冒泡（把 cur[pos] 挪到 index 0）
-        int temp = cur[pos];
-        for (int j = pos; j > 0; j--)
-            cur[j] = cur[j - 1];
-        cur[0] = temp;
-
-        if (!BD_MINIMAL_OUTPUT)
-        {
-            cout << " → ";
-            for (int v : cur) cout << v << " ";
-            cout << "\n";
-        }
-    }
-
-    // cout << "🔚 冒泡结束，最终序列: ";
-    // for (int v : cur) cout << v << " ";
-    // cout << "（应为 1 2 3 4 ...）\n";
-
-    // // ---------- 3. 正确的矩阵乘法顺序：W_last · ... · W1 ----------
-    // cout << "📌 最终交换矩阵链 W = ";
-    // for (int i = W_chain.size(); i >= 1; --i)
-        if (!BD_MINIMAL_OUTPUT)
-    {
-        // cout << "W" << i;
-        // if (i > 1) cout << " · ";
-
-                cout << "🔚 冒泡结束，最终序列: ";
-        for (int v : cur) cout << v << " ";
-        cout << "（应为 1 2 3 4 ...）\n";
-
-        // ---------- 3. 正确的矩阵乘法顺序：W_last · ... · W1 ----------
-        cout << "📌 最终交换矩阵链 W = ";
-        for (int i = W_chain.size(); i >= 1; --i)
-        {
-            cout << "W" << i;
-            if (i > 1) cout << " · ";
-        }
-        cout << "\n";
-    }
-    //cout << "\n";
-
-    // ⭐ Reverse：因为 Vec_chain_multiply 是按 chain[0]·chain[1]·… 乘
-    reverse(W_chain.begin(), W_chain.end());
-
-    //cout << "📌 原始真值表 × (W_last · ... · W1) = 重排真值表\n\n";
-        if (!BD_MINIMAL_OUTPUT)
-        cout << "📌 原始真值表 × (W_last · ... · W1) = 重排真值表\n\n";
-
-    // ---------- 4. 执行矩阵链 ----------
-    vector<stp_data> Mf = binary_to_vec(f01);
-    vector<stp_data> Mperm = Vec_chain_multiply(W_chain, false);
-    vector<stp_data> R = Vec_semi_tensor_product(Mf, Mperm);
-
-    // ---------- 5. 转为字符串 ----------
+    // ---------- 2. 索引映射重排 ----------
     string out;
-    out.reserve(R.size() - 1);
-    for (size_t i = 1; i < R.size(); ++i)
-        out.push_back(R[i] ? '1' : '0');
+    out.resize(f01.size());
 
-    //cout << "📌 重排后的 f01（二进制） = " << out << "\n\n";
-        if (!BD_MINIMAL_OUTPUT)
-        cout << "📌 重排后的 f01（二进制） = " << out << "\n\n";
+    // 建立 old_pos：变量编号 → bit 位置
+    std::vector<int> old_pos(n + 1);
+    for (int i = 0; i < n; ++i)
+        old_pos[old_order[i]] = i;
+
+    for (size_t new_idx = 0; new_idx < f01.size(); ++new_idx)
+    {
+        uint64_t old_idx = 0;
+
+        for (int i = 0; i < n; ++i)
+        {
+            int bit = (new_idx >> (n - 1 - i)) & 1;
+            int var = new_var_order[i];
+            int pos = old_pos[var];
+
+            old_idx |= (uint64_t(bit) << (n - 1 - pos));
+        }
+
+        out[new_idx] = f01[old_idx];
+    }
 
     return out;
 }
