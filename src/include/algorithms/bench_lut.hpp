@@ -27,6 +27,7 @@ struct BenchNetlist
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
     std::unordered_map<std::string, LutNode> luts;
+    std::vector<std::string> passthrough_lines; //保留非lut的字段
 };
 
 // ---------------- BENCH 缓存 ----------------
@@ -117,8 +118,10 @@ inline BenchNetlist read_bench_lut( const std::string& filename )
         }
         else
         {
-            std::cerr << "⚠ ignored line " << lineno << ": " << line << "\n";
+            // ⭐ 非 LUT 语句（如 vdd / gnd / assign），原样保留
+            net.passthrough_lines.push_back(line);
         }
+
     }
 
     return net;

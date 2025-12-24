@@ -21,8 +21,19 @@
 #include "../include/algorithms/node_global.hpp"
 #include "../include/algorithms/truth_table.hpp"
 
+
+#include "../include/algorithms/mix_dsd.hpp"
+#include "../include/algorithms/strong_dsd.hpp"
+#include "../include/algorithms/stp_dsd.hpp"
 namespace alice
 {
+enum class resyn_strategy
+{
+    bi_dec,
+    dsd,
+    strong_dsd,
+    mix_dsd
+};
 
 
 static int run_bi_decomp_for_resyn(const std::string& binary01, bool enable_else_dec)
@@ -58,6 +69,78 @@ static int run_bi_decomp_for_resyn(const std::string& binary01, bool enable_else
     return root_id;
 }
 
+static int run_dsd_for_resyn(const std::string& binary01)
+{
+    if (!is_power_of_two(binary01.size()))
+        throw std::runtime_error("input length must be power of two");
+
+    int n = static_cast<int>(std::log2(binary01.size()));
+
+    RESET_NODE_GLOBAL();
+    ORIGINAL_VAR_COUNT = n;
+
+    TT root;
+    root.f01 = binary01;
+    root.order.resize(n);
+
+    for (int i = 0; i < n; ++i)
+        root.order[i] = n - i;
+
+    for (int v = 1; v <= n; ++v)
+        new_in_node(v);
+
+    TT root_shrunk = shrink_to_support(root);
+    return dsd_factor(root_shrunk);
+}
+
+static int run_strong_dsd_for_resyn(const std::string& binary01)
+{
+    if (!is_power_of_two(binary01.size()))
+        throw std::runtime_error("input length must be power of two");
+
+    int n = static_cast<int>(std::log2(binary01.size()));
+
+    RESET_NODE_GLOBAL();
+    ORIGINAL_VAR_COUNT = n;
+
+    TT root;
+    root.f01 = binary01;
+    root.order.resize(n);
+
+    for (int i = 0; i < n; ++i)
+        root.order[i] = n - i;
+
+    for (int v = 1; v <= n; ++v)
+        new_in_node(v);
+
+    TT root_shrunk = shrink_to_support(root);
+    return build_strong_dsd_nodes(root_shrunk.f01, root_shrunk.order, 0);
+}
+
+static int run_mix_dsd_for_resyn(const std::string& binary01)
+{
+    if (!is_power_of_two(binary01.size()))
+        throw std::runtime_error("input length must be power of two");
+
+    int n = static_cast<int>(std::log2(binary01.size()));
+
+    RESET_NODE_GLOBAL();
+    ORIGINAL_VAR_COUNT = n;
+
+    TT root;
+    root.f01 = binary01;
+    root.order.resize(n);
+
+    for (int i = 0; i < n; ++i)
+        root.order[i] = n - i;
+
+    for (int v = 1; v <= n; ++v)
+        new_in_node(v);
+
+    TT root_shrunk = shrink_to_support(root);
+    return dsd_factor_mix_impl(root_shrunk, 0, nullptr, nullptr);
+}
+
 class lut_resyn_command : public command
 {
 public:
@@ -66,6 +149,14 @@ public:
     {
         add_option("file", input_file, "BENCH file");
         add_option("-o,--output", output_file, "output BENCH file")->required();
+
+        add_flag("-b,--bi_dec", use_bi_dec,
+                 "use bi-decomposition (default)");
+        add_flag("-d,--dsd", use_dsd, "use DSD-based decomposition");
+        add_flag("-s,--strong", use_strong_dsd,
+                 "use strong DSD (requires -d)");
+        add_flag("-m,--mix", use_mix_dsd,
+                 "use mixed DSD (requires -d)");
         add_flag("-e,--else_dec", use_else_dec,
                  "enable else_dec fallback when BD fails");
     }
@@ -105,18 +196,68 @@ protected:
             BENCH_SOURCE = input_file;
         }
 
+               bool algorithm_selected = use_bi_dec || use_dsd;
+        if (use_strong_dsd || use_mix_dsd)
+            algorithm_selected = true;
+
+        if (!algorithm_selected)
+            use_bi_dec = true;
+
+        if (use_bi_dec && use_dsd)
+        {
+            std::cout << "❌ Options -b and -d cannot be used together.\n";
+            return;
+        }
+
+        if (use_else_dec && !use_bi_dec)
+        {
+            std::cout << "❌ --else_dec can only be used with -b.\n";
+            return;
+        }
+
+        if (!use_dsd && (use_strong_dsd || use_mix_dsd))
+        {
+            std::cout << "❌ Options -s or -m require -d.\n";
+            return;
+        }
+
+        if (use_strong_dsd && use_mix_dsd)
+        {
+            std::cout << "❌ Options -s and -m cannot be used together.\n";
+            return;
+        }
+
+        resyn_strategy strategy = resyn_strategy::bi_dec;
+        if (use_dsd)
+        {
+            strategy = resyn_strategy::dsd;
+            if (use_strong_dsd)
+                strategy = resyn_strategy::strong_dsd;
+            else if (use_mix_dsd)
+                strategy = resyn_strategy::mix_dsd;
+        }
+
         std::ofstream fout(output_file);
         if (!fout)
         {
             std::cout << "❌ Cannot open " << output_file << "\n";
             return;
         }
-
+        
         for (const auto& in : net.inputs)
             fout << "INPUT(" << in << ")\n";
         for (const auto& out : net.outputs)
             fout << "OUTPUT(" << out << ")\n";
         fout << "\n";
+
+        // 3️⃣ 非 LUT 行（vdd / gnd / assign 等）
+        for (const auto& line : net.passthrough_lines)
+        {
+            fout << line << "\n";
+        }
+
+        fout << "\n";
+
 
         std::vector<std::string> lut_names;
         lut_names.reserve(net.luts.size());
@@ -157,7 +298,21 @@ protected:
             int root_id = 0;
             try
             {
-                root_id = run_bi_decomp_for_resyn(binary01, use_else_dec);
+                                switch (strategy)
+                {
+                case resyn_strategy::bi_dec:
+                    root_id = run_bi_decomp_for_resyn(binary01, use_else_dec);
+                    break;
+                case resyn_strategy::dsd:
+                    root_id = run_dsd_for_resyn(binary01);
+                    break;
+                case resyn_strategy::strong_dsd:
+                    root_id = run_strong_dsd_for_resyn(binary01);
+                    break;
+                case resyn_strategy::mix_dsd:
+                    root_id = run_mix_dsd_for_resyn(binary01);
+                    break;
+                }
             }
             catch (const std::exception& e)
             {
@@ -225,6 +380,10 @@ protected:
 private:
     std::string input_file{};
     std::string output_file{};
+    bool use_bi_dec = false;
+    bool use_dsd = false;
+    bool use_strong_dsd = false;
+    bool use_mix_dsd = false;
     bool use_else_dec = false;
 };
 
