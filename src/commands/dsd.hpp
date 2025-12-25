@@ -71,9 +71,9 @@ namespace alice
         return;
     }
 
-    if (use_else_dec && (use_strong || use_mix))
+    if (use_else_dec && use_strong)
     {
-        std::cout << "❌ Option -e cannot be combined with -s or -m.\n";
+          std::cout << "❌ Option -e cannot be combined with -s.\n";
         return;
     }
 
@@ -126,7 +126,11 @@ namespace alice
                 return;
             }
             auto t1 = clk::now();
-            run_dsd_recursive_mix(raw);
+                        if (use_else_dec) {
+                run_dsd_recursive(raw, true);
+            } else {
+                run_dsd_recursive_mix(raw);
+            }
             auto t2 = clk::now();
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
             std::cout << "⏱ Mixed DSD time = " << us << " us\n";
@@ -202,7 +206,11 @@ namespace alice
 
     if (use_mix) {
         auto t1 = clk::now();
-        run_dsd_recursive_mix(binary);
+        if (use_else_dec) {
+            run_dsd_recursive(binary, true);
+        } else {
+            run_dsd_recursive_mix(binary);
+        }
         auto t2 = clk::now();
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
         std::cout << "⏱ Mixed DSD time = " << us << " us\n";

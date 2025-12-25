@@ -78,7 +78,7 @@ static int run_dsd_for_resyn(const std::string& binary01, bool enable_else_dec)
 
     bool prev_enable_else = ENABLE_ELSE_DEC;
     ENABLE_ELSE_DEC = enable_else_dec;
-    
+
     RESET_NODE_GLOBAL();
     ORIGINAL_VAR_COUNT = n;
 
@@ -124,13 +124,17 @@ static int run_strong_dsd_for_resyn(const std::string& binary01)
     return build_strong_dsd_nodes(root_shrunk.f01, root_shrunk.order, 0);
 }
 
-static int run_mix_dsd_for_resyn(const std::string& binary01)
+static int run_mix_dsd_for_resyn(const std::string& binary01, bool enable_else_dec)
 {
     if (!is_power_of_two(binary01.size()))
         throw std::runtime_error("input length must be power of two");
 
     int n = static_cast<int>(std::log2(binary01.size()));
 
+        if (enable_else_dec)
+    {
+        return run_dsd_for_resyn(binary01, true);
+    }
     RESET_NODE_GLOBAL();
     ORIGINAL_VAR_COUNT = n;
 
@@ -222,9 +226,9 @@ protected:
             return;
         }
 
-        if (use_else_dec && (use_strong_dsd || use_mix_dsd))
+         if (use_else_dec && use_strong_dsd)
         {
-             std::cout << "❌ Options -s or -m require -d.\n";
+              std::cout << "❌ Option -e cannot be combined with -s.\n";
             return;
         }
 
@@ -317,7 +321,7 @@ protected:
                     root_id = run_strong_dsd_for_resyn(binary01);
                     break;
                 case resyn_strategy::mix_dsd:
-                    root_id = run_mix_dsd_for_resyn(binary01);
+                    root_id = run_mix_dsd_for_resyn(binary01, use_else_dec);
                     break;
                 }
             }
