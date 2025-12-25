@@ -69,13 +69,16 @@ static int run_bi_decomp_for_resyn(const std::string& binary01, bool enable_else
     return root_id;
 }
 
-static int run_dsd_for_resyn(const std::string& binary01)
+static int run_dsd_for_resyn(const std::string& binary01, bool enable_else_dec)
 {
     if (!is_power_of_two(binary01.size()))
         throw std::runtime_error("input length must be power of two");
 
     int n = static_cast<int>(std::log2(binary01.size()));
 
+    bool prev_enable_else = ENABLE_ELSE_DEC;
+    ENABLE_ELSE_DEC = enable_else_dec;
+    
     RESET_NODE_GLOBAL();
     ORIGINAL_VAR_COUNT = n;
 
@@ -90,7 +93,11 @@ static int run_dsd_for_resyn(const std::string& binary01)
         new_in_node(v);
 
     TT root_shrunk = shrink_to_support(root);
-    return dsd_factor(root_shrunk);
+    int root_id = dsd_factor(root_shrunk);
+
+    ENABLE_ELSE_DEC = prev_enable_else;
+
+    return root_id;
 }
 
 static int run_strong_dsd_for_resyn(const std::string& binary01)
@@ -158,7 +165,7 @@ public:
         add_flag("-m,--mix", use_mix_dsd,
                  "use mixed DSD (requires -d)");
         add_flag("-e,--else_dec", use_else_dec,
-                 "enable else_dec fallback when BD fails");
+                "enable else_dec fallback (BD) or DSD exact+Shannon (-d)");
     }
 
 protected:
@@ -209,15 +216,15 @@ protected:
             return;
         }
 
-        if (use_else_dec && !use_bi_dec)
+         if (!use_dsd && (use_strong_dsd || use_mix_dsd))
         {
-            std::cout << "❌ --else_dec can only be used with -b.\n";
+             std::cout << "❌ Options -s or -m require -d.\n";
             return;
         }
 
-        if (!use_dsd && (use_strong_dsd || use_mix_dsd))
+        if (use_else_dec && (use_strong_dsd || use_mix_dsd))
         {
-            std::cout << "❌ Options -s or -m require -d.\n";
+             std::cout << "❌ Options -s or -m require -d.\n";
             return;
         }
 
@@ -304,7 +311,7 @@ protected:
                     root_id = run_bi_decomp_for_resyn(binary01, use_else_dec);
                     break;
                 case resyn_strategy::dsd:
-                    root_id = run_dsd_for_resyn(binary01);
+                    root_id = run_dsd_for_resyn(binary01, use_else_dec);
                     break;
                 case resyn_strategy::strong_dsd:
                     root_id = run_strong_dsd_for_resyn(binary01);
