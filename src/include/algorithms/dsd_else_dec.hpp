@@ -87,6 +87,7 @@ inline int dsd_else_decompose(
 
     return new_node("1110", { pos_term, neg_term });
   }
+  
   for (char c : f.f01)
     if (c != '0' && c != '1')
       throw std::runtime_error("dsd_else_decompose: f01 contains non-binary char");

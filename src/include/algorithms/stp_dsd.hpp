@@ -753,30 +753,44 @@ static bool factor_once_with_reorder_01(
 // =====================================================
 static int dsd_factor(const TT& f, int depth=0)
 {
-    if (is_binary_constant(f.f01))
-    return build_small_tree(f);
-    
-    //TT f = shrink_to_support(f_raw);
-    if (f.order.size() <= 2)
+// 常量：真正的终点
+if (is_binary_constant(f.f01))
     return build_small_tree(f);
 
-    int len = f.f01.size();
-    if(len <= 4)  
-        return build_small_tree(f);
+// 1~2 变量：终点
+if (f.order.size() <= 2)
+    return build_small_tree(f);
+
+// ⚠️ 不要在这里因为 len<=4 停下来
+
 
     string MF12;
     TT phi_tt, psi_tt;
 
-    if(!factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt))
-     {
-        if (ENABLE_ELSE_DEC && len > 4)
-        {
-            std::cout << "⚠️ depth " << depth
-                      << ": DSD split failed, enter else decomposition\n";
-            return dsd_else_decompose(f, depth);
-        }
-        return build_small_tree(f);
+if (!factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt))
+{
+    const int n = static_cast<int>(std::log2(f.f01.size()));
+
+    if (ENABLE_ELSE_DEC)
+    {
+        // ① 先尝试 Shannon（只在 n>4 真正起作用）
+        int sh = dsd_else_decompose(f, depth);
+        if (sh != -1)
+            return sh;
+
+        // ② 走到这里说明：n<=4，DSD + Shannon 都不行
+        std::cout << "⚠️ depth " << depth
+                  << ": DSD/Shannon failed, enter EXACT refine (n=" << n << ")\n";
+
+        // 👉 这里才是 exact / klut 的“唯一入口”
+        return build_small_tree(f);  
+        // 如果你有 exact_2lut_refine，就在这里调用它
     }
+
+    // 没开 -e，才直接退化
+    return build_small_tree(f);
+}
+
     vector<int> phi_original_vars = phi_tt.order;
     vector<int> psi_original_vars = psi_tt.order;
     
@@ -803,10 +817,12 @@ static int dsd_factor(const TT& f, int depth=0)
         cout << "位置" << (i+1) << "→变量" << psi_original_vars[i] << " ";
     cout << "\n\n";
 
-    if (MF12.empty())
-    {
-        return build_small_tree(psi_tt);  // 直接叶子化，不再递归
-    }
+if (MF12.empty())
+{
+    // f = Ψ，本质上只是消掉了一层
+    // 不要直接叶子化，继续走 DSD 主线
+    return dsd_factor(psi_tt, depth + 1);
+}
 
         int L, R;
 
