@@ -36,6 +36,10 @@ namespace alice
 
             add_flag("-m, --mix",
              "prefer DSD (-f) per layer, fallback to strong DSD when needed");
+
+             
+            add_flag("-e, --else",
+                     "enable exact synthesis + Shannon fallback for -f");
         }
 
     protected:
@@ -47,10 +51,17 @@ namespace alice
     bool use_hex = is_set("factor");
     bool use_strong = is_set("strong");
     bool use_mix = is_set("mix");
+    bool use_else_dec = is_set("else");
 
     if (use_raw && use_hex)
     {
         std::cout << "❌ Options -f and -x cannot be used together.\n";
+        return;
+    }
+
+    if (use_else_dec && use_raw)
+    {
+        std::cout << "❌ Option -e only supports hexadecimal mode (-f).\n";
         return;
     }
 
@@ -59,6 +70,13 @@ namespace alice
         std::cout << "❌ Options -s and -m cannot be used together.\n";
         return;
     }
+
+    if (use_else_dec && (use_strong || use_mix))
+    {
+        std::cout << "❌ Option -e cannot be combined with -s or -m.\n";
+        return;
+    }
+
 
 
     // ------------ RAW MODE ------------
@@ -195,7 +213,7 @@ namespace alice
     // 计时
     auto t1 = clk::now();
     //all_reorders(binary);
-    run_dsd_recursive(binary);
+     run_dsd_recursive(binary, use_else_dec);
     auto t2 = clk::now();
 
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
@@ -205,6 +223,7 @@ namespace alice
     private:
         std::string hex_input{};
         std::string raw_input{};
+        bool use_else_dec = false;
     };
 
     ALICE_ADD_COMMAND(dsd, "STP")

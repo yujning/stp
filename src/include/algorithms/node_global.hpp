@@ -7,7 +7,10 @@
 #include <vector>
 // 前向声明，避免循环依赖
 struct DSDNode;
-struct TT;
+struct TT {
+    std::string f01;
+    std::vector<int> order;
+};
 int new_node(const std::string&, const std::vector<int>&);
 int new_in_node(int var_id);
 // C++17 允许 inline 全局变量，只需定义一次即可，全工程自动共享

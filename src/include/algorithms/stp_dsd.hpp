@@ -8,7 +8,7 @@ using namespace std;
 
 #include "excute.hpp"
 #include "reorder.hpp"
-
+#include "dsd_else_dec.hpp"
 // ================================================
 // kitty truth table
 // ================================================
@@ -33,10 +33,6 @@ struct DSDNode {
 // TT = truth table + variable order
 // order[i] = 原始变量编号（1-based），对应局部位置 i+1
 // ================================================
-struct TT {
-    string f01;
-    vector<int> order;
-};
 
 
 
@@ -714,8 +710,15 @@ static int dsd_factor(const TT& f, int depth=0)
     TT phi_tt, psi_tt;
 
     if(!factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt))
+     {
+        if (ENABLE_ELSE_DEC && len > 4)
+        {
+            std::cout << "⚠️ depth " << depth
+                      << ": DSD split failed, enter else decomposition\n";
+            return dsd_else_decompose(f, depth);
+        }
         return build_small_tree(f);
-
+    }
     vector<int> phi_original_vars = phi_tt.order;
     vector<int> psi_original_vars = psi_tt.order;
     
@@ -751,9 +754,10 @@ static int dsd_factor(const TT& f, int depth=0)
 // =====================================================
 // run_dsd_recursive
 // =====================================================
-inline bool run_dsd_recursive(const std::string& binary01)
+inline bool run_dsd_recursive(const std::string& binary01, bool enable_else_dec)
 {
     RESET_NODE_GLOBAL();
+     ENABLE_ELSE_DEC = enable_else_dec;
     if (!is_power_of_two(binary01.size())) {
         std::cout << "输入长度必须为 2^n\n";
         return false;

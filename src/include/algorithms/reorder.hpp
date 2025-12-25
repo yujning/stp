@@ -6,7 +6,7 @@ using std::set;
 using std::cout;
 using std::endl;
 
-bool run_dsd_recursive(const string& binary01);
+bool run_dsd_recursive(const string& binary01, bool enable_else_dec = false);
 
 //-----------------------------------------
 // 判断是否为 2 的幂
@@ -131,7 +131,7 @@ inline void all_reorders(const string &binary)
                 for(int j : Lambda) cout<<j<<" ";
                 cout << "}  => reordered: " << reordered << "\n";
 
-                run_dsd_recursive(reordered);
+                run_dsd_recursive(reordered, ENABLE_ELSE_DEC);
                 return;
             }
 
