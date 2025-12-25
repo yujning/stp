@@ -167,11 +167,7 @@ protected:
             std::cout << "❌ -s / -m require -d\n";
             return;
         }
-        if (use_else_dec && use_strong_dsd)
-        {
-            std::cout << "❌ -e cannot be combined with -s\n";
-            return;
-        }
+
         if (use_strong_dsd && use_mix_dsd)
         {
             std::cout << "❌ -s and -m cannot be used together\n";
@@ -250,7 +246,10 @@ protected:
                 break;
 
             case resyn_strategy::strong_dsd:
-                root_id = run_strong_dsd_for_resyn(binary01);
+                 if (use_else_dec)
+                    root_id = run_dsd_recursive(binary01, true);
+                else
+                    root_id = run_strong_dsd_for_resyn(binary01);
                 break;
 
             case resyn_strategy::mix_dsd:

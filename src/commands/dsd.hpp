@@ -71,13 +71,6 @@ namespace alice
         return;
     }
 
-    if (use_else_dec && use_strong)
-    {
-          std::cout << "❌ Option -e cannot be combined with -s.\n";
-        return;
-    }
-
-
 
     // ------------ RAW MODE ------------
     if (use_raw)
@@ -103,16 +96,21 @@ namespace alice
                 return;
             }
             auto t1 = clk::now();
-            RESET_NODE_GLOBAL();
-            ORIGINAL_VAR_COUNT = static_cast<int>(std::log2(raw.size()));
-            std::vector<int> order;
-            for (int i = ORIGINAL_VAR_COUNT; i >= 1; --i) {
-                order.push_back(i);
+    if (use_else_dec) {
+                run_dsd_recursive(raw, true);
+            } else {
+                RESET_NODE_GLOBAL();
+                ORIGINAL_VAR_COUNT = static_cast<int>(std::log2(raw.size()));
+                std::vector<int> order;
+                for (int i = ORIGINAL_VAR_COUNT; i >= 1; --i) {
+                    order.push_back(i);
+                }
+                for (int v = 1; v <= ORIGINAL_VAR_COUNT; ++v) {
+                    new_in_node(v);
+                }
+                build_strong_dsd_nodes(raw, order, 0);
             }
-            for (int v = 1; v <= ORIGINAL_VAR_COUNT; ++v) {
-                new_in_node(v);
-            }
-            build_strong_dsd_nodes(raw, order, 0);
+ 
             auto t2 = clk::now();
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
             std::cout << "⏱ Strong DSD time = " << us << " us\n";
@@ -188,16 +186,21 @@ namespace alice
     
     if (use_strong) {
         auto t1 = clk::now();
-        RESET_NODE_GLOBAL();
-        ORIGINAL_VAR_COUNT = static_cast<int>(std::log2(binary.size()));
-        std::vector<int> order;
-        for (int i = ORIGINAL_VAR_COUNT; i >= 1; --i) {
-            order.push_back(i);
+  if (use_else_dec) {
+            run_dsd_recursive(binary, true);
+        } else {
+            RESET_NODE_GLOBAL();
+            ORIGINAL_VAR_COUNT = static_cast<int>(std::log2(binary.size()));
+            std::vector<int> order;
+            for (int i = ORIGINAL_VAR_COUNT; i >= 1; --i) {
+                order.push_back(i);
+            }
+            for (int v = 1; v <= ORIGINAL_VAR_COUNT; ++v) {
+                new_in_node(v);
+            }
+            build_strong_dsd_nodes(binary, order, 0);
         }
-        for (int v = 1; v <= ORIGINAL_VAR_COUNT; ++v) {
-            new_in_node(v);
-        }
-        build_strong_dsd_nodes(binary, order, 0);
+
         auto t2 = clk::now();
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
         std::cout << "⏱ Strong DSD time = " << us << " us\n";
