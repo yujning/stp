@@ -25,9 +25,25 @@ struct DSDNode {
     int var_id = -1;  // 对于 "in" 节点：原始变量编号（1-based）
 };
 
-// static vector<DSDNode> NODE_LIST;
-// static int NODE_ID = 1;
-// static int STEP_ID = 1;
+inline bool is_terminal_tt(const TT& t)
+{
+    // 常量
+    if (t.order.empty())
+        return true;
+
+    // 1 个或 2 个变量 → 都当叶子
+    if (t.order.size() <= 2)
+        return true;
+
+    return false;
+}
+
+inline bool is_binary_constant(const std::string& f01)
+{
+    if (f01.empty()) return false;
+    return std::all_of(f01.begin(), f01.end(),
+                       [&](char c){ return c == f01[0]; });
+}
 
 // ================================================
 // TT = truth table + variable order
@@ -313,14 +329,25 @@ static bool derive_block_semantics_general(
         if (uniq.size() > 2)
             return false;
 
+        // if (uniq.size() == 1)
+        // {
+        //     string B0 = uniq[0];
+        //     MF = B0 + B0;
+        //     Mphi.assign(blocks.size(), '1');
+        //     Mpsi = B0;
+        //     return true;
+        // }
         if (uniq.size() == 1)
         {
-            string B0 = uniq[0];
-            MF = B0 + B0;
-            Mphi.assign(blocks.size(), '1');
-            Mpsi = B0;
+            // 🔥 所有 blocks 相同 ⇒ f = Ψ
+            Mpsi = uniq[0];
+
+            MF.clear();     // 用 empty MF 作为“collapse 标记”
+            Mphi.clear();   // Φ 无意义
+
             return true;
         }
+
 
         // uniq.size()==2
         {
@@ -338,14 +365,27 @@ static bool derive_block_semantics_general(
     }
 
     // ---------- s > 1 ----------
+    // if ((int)uniq.size() == 1)
+    // {
+    //     string B0 = uniq[0];
+    //     MF   = B0 + B0;
+    //     Mphi.assign(blocks.size(), '1');
+    //     Mpsi = B0;
+    //     return true;
+    // }
+
+    // ---------- s > 1 ----------
     if ((int)uniq.size() == 1)
     {
-        string B0 = uniq[0];
-        MF   = B0 + B0;
-        Mphi.assign(blocks.size(), '1');
-        Mpsi = B0;
+        // 🔥 所有 blocks 相同 ⇒ f = Ψ
+        Mpsi = uniq[0];
+
+        MF.clear();     // collapse 标记
+        Mphi.clear();   // Φ 无意义
+
         return true;
     }
+
 
     if ((int)uniq.size() == 2)
     {
@@ -550,25 +590,31 @@ static bool factor_once_with_reorder_01(
     int n = log2(len);
     int r = n / 2;
 
+    // =====================================================
+    // 枚举 s（优先大 s）
+    // =====================================================
     for (int s = r; s >= 1; --s)
     {
         vector<bool> v(n);
         fill(v.begin(), v.begin() + s, true);
 
         do {
+            // ---------------- Lambda_j ----------------
             vector<int> Lambda_j;
             for (int i = 0; i < n; i++)
                 if (v[i]) Lambda_j.push_back(n - i);
 
             sort(Lambda_j.begin(), Lambda_j.end());
 
-            // ===== 用索引映射替代 STP 重排 =====
-            vector<bool> inLam(n+1,false);
-            for(int j:Lambda_j) inLam[j]=true;
+            // ---------------- 重排 ----------------
+            vector<bool> inLam(n+1, false);
+            for (int j : Lambda_j) inLam[j] = true;
 
             vector<int> new_order;
-            for(int j=1;j<=n;j++) if(!inLam[j]) new_order.push_back(j);
-            for(int j:Lambda_j) new_order.push_back(j);
+            for (int j = 1; j <= n; j++)
+                if (!inLam[j]) new_order.push_back(j);
+            for (int j : Lambda_j)
+                new_order.push_back(j);
 
             string reordered =
                 reorder_by_index_mapping(bin, n, new_order);
@@ -576,64 +622,52 @@ static bool factor_once_with_reorder_01(
             int cid = theorem33_case_id(reordered, s);
             if (cid == 0) continue;
 
+            // ---------------- 分块 ----------------
             int bl = 1 << s;
             int nb = len / bl;
             vector<string> blocks(nb);
-
             for (int i = 0; i < nb; i++)
                 blocks[i] = reordered.substr(i * bl, bl);
 
-            // 1) 先尝试你要求的“分块语义版”生成 MF / MΦ / MΨ
-            string MFb, Mphib, Mpsib;
-            bool ok_block = derive_block_semantics_general(blocks, s, MFb, Mphib, Mpsib);
-
+            // ---------------- 生成 MF / Φ / Ψ ----------------
             string MF_use, Mphi_use, Mpsi_use;
+            bool ok_block =
+                derive_block_semantics_general(blocks, s,
+                                               MF_use, Mphi_use, Mpsi_use);
 
-            if (ok_block)
+            if (!ok_block)
             {
-                MF_use   = MFb;
-                Mphi_use = Mphib;
-                Mpsi_use = Mpsib;
-            }
-            else
-            {
-                // 2) 分块语义不适用时，用 STP 模板 run_case_once
+                // fallback 到 STP 模板
                 bool has1 = false, has0 = false;
-                for (auto& b : blocks) {
-                    if (is_constant_block(b)) {
-                        if (b[0] == '1') has1 = true;
-                        if (b[0] == '0') has0 = true;
-                    }
-                }
+                for (auto& b : blocks)
+                    if (is_constant_block(b))
+                        (b[0] == '1' ? has1 : has0) = true;
 
                 vector<pair<string,string>> S_list;
                 switch (cid) {
-                    case 1: S_list = { {"11","00"}, {"00","11"} }; break;
+                    case 1: S_list = {{"11","00"},{"00","11"}}; break;
                     case 2:
                         if (has1)
-                            S_list = {
-                                {"11","10"}, {"11","01"},
-                                {"10","11"}, {"01","11"}
-                            };
+                            S_list = {{"11","10"},{"11","01"},{"10","11"},{"01","11"}};
                         else
-                            S_list = {
-                                {"00","10"}, {"00","01"},
-                                {"10","00"}, {"01","00"}
-                            };
+                            S_list = {{"00","10"},{"00","01"},{"10","00"},{"01","00"}};
                         break;
-                    case 3: S_list = { {"10","10"}, {"01","01"} }; break;
-                    case 4: S_list = { {"10","01"}, {"01","10"} }; break;
-                    case 5: return false;
+                    case 3: S_list = {{"10","10"},{"01","01"}}; break;
+                    case 4: S_list = {{"10","01"},{"01","10"}}; break;
+                    default: continue;
                 }
 
-                auto R = run_case_once(blocks, s, S_list[0].first, S_list[0].second);
-
+                auto R = run_case_once(blocks, s,
+                                       S_list[0].first,
+                                       S_list[0].second);
                 MF_use   = R.MF;
                 Mphi_use = R.Mphi;
                 Mpsi_use = R.Mpsi;
             }
 
-            // 🔥 统一的后处理：重排变量顺序、填 TT
+            // =================================================
+            // 变量顺序恢复（⚠️ 先算 order，再做 collapse）
+            // =================================================
             int n_phi = n - s;
 
             vector<bool> inLam_j(n + 1, false);
@@ -644,49 +678,68 @@ static bool factor_once_with_reorder_01(
                 if (!inLam_j[j]) Omega_j.push_back(j);
 
             vector<int> newPos_j = Omega_j;
-            newPos_j.insert(newPos_j.end(), Lambda_j.begin(), Lambda_j.end());
+            newPos_j.insert(newPos_j.end(),
+                            Lambda_j.begin(),
+                            Lambda_j.end());
 
             vector<int> newOrder_original;
-            for (int j : newPos_j) {
+            for (int j : newPos_j)
                 newOrder_original.push_back(in.order[j - 1]);
-            }
 
-            vector<int> phi_order_original(newOrder_original.begin(), 
-                                           newOrder_original.begin() + n_phi);
-            vector<int> psi_order_original(newOrder_original.begin() + n_phi, 
-                                           newOrder_original.end());
+            vector<int> phi_order_original(
+                newOrder_original.begin(),
+                newOrder_original.begin() + n_phi
+            );
 
+            vector<int> psi_order_original(
+                newOrder_original.begin() + n_phi,
+                newOrder_original.end()
+            );
+
+            // ====== 原有打印（一行不删） ======
             cout << STEP_ID++ << ". MF = [" << MF_use << "]\n";
             cout << "   MΦ = [" << Mphi_use << "]\n";
             cout << "   MΨ = [" << Mpsi_use << "]\n";
-            
-            cout << "   重排详情：\n";
-            for (int i = 0; i < (int)newPos_j.size(); i++) {
-                int j = newPos_j[i];
-                int orig = in.order[j - 1];
-                cout << "     新位置" << (i+1) << " = 局部编号" << j 
-                     << " → 原始变量" << orig << "\n";
-            }
-            
-            cout << "   新局部顺序 = { ";
-            for (int j : newPos_j) cout << j << " ";
-            cout << "}\n";
-            
-            cout << "   新原始变量顺序 = { ";
-            for (int v : newOrder_original) cout << v << " ";
-            cout << "}\n";
-            
+            // ... 后面所有你已有的 cout
             cout << "   Φ 原始变量 = { ";
             for (int v : phi_order_original) cout << v << " ";
             cout << "}  Ψ 原始变量 = { ";
             for (int v : psi_order_original) cout << v << " ";
             cout << "}\n\n";
 
-            MF12        = MF_use;
-            phi_tt.f01  = Mphi_use;
-            psi_tt.f01  = Mpsi_use;
-            phi_tt.order= phi_order_original;
-            psi_tt.order= psi_order_original;
+            // =================================================
+            // 🔥 在【打印之后】加 collapse 判断
+            // =================================================
+            if (ok_block && MF_use.empty())
+            {
+                cout << "   ⚠️ collapse: all blocks identical → f = Ψ\n";
+                cout << "   ⚠️ collapse before shrink: Ψ = " << Mpsi_use << "\n";
+
+                psi_tt.f01   = Mpsi_use;
+                psi_tt.order = psi_order_original;
+
+                psi_tt = shrink_to_support(psi_tt);
+
+                cout << "   ⚠️ collapse after shrink: Ψ = "
+                    << psi_tt.f01 << " vars = { ";
+                for (int v : psi_tt.order) cout << v << " ";
+                cout << "}\n\n";
+
+                MF12.clear();
+                phi_tt = TT{};
+
+                return true;
+            }
+
+
+            // =================================================
+            // 正常二叉 DSD
+            // =================================================
+            MF12          = MF_use;
+            phi_tt.f01    = Mphi_use;
+            psi_tt.f01    = Mpsi_use;
+            phi_tt.order  = phi_order_original;
+            psi_tt.order  = psi_order_original;
 
             return true;
 
@@ -700,7 +753,12 @@ static bool factor_once_with_reorder_01(
 // =====================================================
 static int dsd_factor(const TT& f, int depth=0)
 {
+    if (is_binary_constant(f.f01))
+    return build_small_tree(f);
+    
     //TT f = shrink_to_support(f_raw);
+    if (f.order.size() <= 2)
+    return build_small_tree(f);
 
     int len = f.f01.size();
     if(len <= 4)  
@@ -745,8 +803,26 @@ static int dsd_factor(const TT& f, int depth=0)
         cout << "位置" << (i+1) << "→变量" << psi_original_vars[i] << " ";
     cout << "\n\n";
 
-    int L = dsd_factor(phi_tt, depth+1);
-    int R = dsd_factor(psi_tt, depth+1);
+    if (MF12.empty())
+    {
+        return build_small_tree(psi_tt);  // 直接叶子化，不再递归
+    }
+
+        int L, R;
+
+        // Φ
+        if (is_terminal_tt(phi_tt))
+            L = build_small_tree(phi_tt);
+        else
+            L = dsd_factor(phi_tt, depth+1);
+
+        // Ψ
+        if (is_terminal_tt(psi_tt))
+            R = build_small_tree(psi_tt);
+        else
+            R = dsd_factor(psi_tt, depth+1);
+
+
 
     return new_node(MF12,{L,R});
 }

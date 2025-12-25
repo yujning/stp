@@ -18,6 +18,13 @@ extern inline int ORIGINAL_VAR_COUNT;
 namespace alice
 {
 
+inline bool is_binary_constant_func(const std::string& f)
+{
+    if (f.empty()) return false;
+    return std::all_of(f.begin(), f.end(),
+                       [&](char c){ return c == f[0]; });
+}
+
 // ========================================================
 // 变量编号 → 字母
 // varN → 'a', var(N-1) → 'b', …
@@ -94,6 +101,8 @@ protected:
                 name_of[n.id] = varname_from_id(n.var_id);
         }
 
+        
+
         for (auto &n : NODE_LIST)
         {
             if (n.func != "in")
@@ -106,27 +115,42 @@ protected:
         // ====================================================
         // 3) 输出 LUT（🔥 全部 child 顺序反转！）
         // ====================================================
-        for (auto &n : NODE_LIST)
-        {
-            if (n.func == "in")
-                continue;
+for (auto &n : NODE_LIST)
+{
+    if (n.func == "in")
+        continue;
 
-            fout << name_of[n.id] << " = LUT 0x"
-                 << bin_to_hex(n.func) << " (";
+    // 🔥🔥🔥 第一优先级：binary 常量（不看 child 数）
+    if (!n.func.empty() &&
+        std::all_of(n.func.begin(), n.func.end(),
+                    [&](char c){ return c == n.func[0]; }))
+    {
+        std::cout << "[DEBUG] const node " << n.id << " func=" << n.func << "\n";
 
-            // ⭐⭐⭐ 关键：反转 child 顺序，无条件统一
-            std::vector<int> rev = n.child;
-            std::reverse(rev.begin(), rev.end());
+        if (n.func[0] == '0')
+            fout << name_of[n.id] << " = gnd\n";
+        else
+            fout << name_of[n.id] << " = vdd\n";
+        continue;
+    }
 
-            for (size_t i = 0; i < rev.size(); i++)
-            {
-                fout << name_of[rev[i]];
-                if (i + 1 < rev.size())
-                    fout << ", ";
-            }
+    // ===== 普通 LUT =====
+    fout << name_of[n.id] << " = LUT 0x"
+         << bin_to_hex(n.func) << " (";
 
-            fout << ")\n";
-        }
+    std::vector<int> rev = n.child;
+    std::reverse(rev.begin(), rev.end());
+
+    for (size_t i = 0; i < rev.size(); i++)
+    {
+        fout << name_of[rev[i]];
+        if (i + 1 < rev.size())
+            fout << ", ";
+    }
+
+    fout << ")\n";
+}
+
 
         // ====================================================
         // Done
