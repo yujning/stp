@@ -846,7 +846,8 @@ if (MF12.empty())
 // =====================================================
 // run_dsd_recursive
 // =====================================================
-inline bool run_dsd_recursive(const std::string& binary01, bool enable_else_dec)
+inline int run_dsd_recursive(const std::string& binary01, bool enable_else_dec)
+
 {
     RESET_NODE_GLOBAL();
      ENABLE_ELSE_DEC = enable_else_dec;
@@ -920,5 +921,5 @@ inline bool run_dsd_recursive(const std::string& binary01, bool enable_else_dec)
     for (int v : FINAL_VAR_ORDER) std::cout << v << " ";
     std::cout << "}\n";
 
-    return true;
+    return root_id;
 }

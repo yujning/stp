@@ -6,7 +6,7 @@ using std::set;
 using std::cout;
 using std::endl;
 
-bool run_dsd_recursive(const string& binary01, bool enable_else_dec = false);
+int run_dsd_recursive(const string& binary01, bool enable_else_dec = false);
 
 //-----------------------------------------
 // 判断是否为 2 的幂

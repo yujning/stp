@@ -196,7 +196,7 @@ inline int dsd_factor_mix_impl(
         &placeholder_nodes_mx);
 }
 
-inline bool run_dsd_recursive_mix(const std::string& binary01)
+inline int run_dsd_recursive_mix(const std::string& binary01)
 {
     RESET_NODE_GLOBAL();
     if (!is_power_of_two(binary01.size())) {
@@ -261,5 +261,5 @@ inline bool run_dsd_recursive_mix(const std::string& binary01)
     for (int v : FINAL_VAR_ORDER) std::cout << v << " ";
     std::cout << "}\n";
 
-    return true;
+   return root_id;
 }
