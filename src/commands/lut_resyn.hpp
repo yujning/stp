@@ -39,13 +39,16 @@ enum class resyn_strategy
 /*============================================================*
  * BI-DECOMPOSITION（保持原样）
  *============================================================*/
-static int run_bi_decomp_for_resyn(const std::string& binary01, bool enable_else_dec)
+static int run_bi_decomp_for_resyn(const std::string& binary01, bool enable_else_dec,
+                                   bool enable_dsd_mix_fallback)
 {
     bool prev_minimal_output = BD_MINIMAL_OUTPUT;
     bool prev_enable_else    = ENABLE_ELSE_DEC;
+    bool prev_dsd_mix        = BD_ENABLE_DSD_MIX_FALLBACK;
 
     RESET_NODE_GLOBAL();
     ENABLE_ELSE_DEC   = enable_else_dec;
+    BD_ENABLE_DSD_MIX_FALLBACK = enable_dsd_mix_fallback;
     BD_MINIMAL_OUTPUT = true;
 
     if (!is_power_of_two(binary01.size()))
@@ -68,6 +71,7 @@ static int run_bi_decomp_for_resyn(const std::string& binary01, bool enable_else
 
     BD_MINIMAL_OUTPUT = prev_minimal_output;
     ENABLE_ELSE_DEC   = prev_enable_else;
+    BD_ENABLE_DSD_MIX_FALLBACK = prev_dsd_mix;
 
     return root_id;
 }
@@ -120,6 +124,9 @@ public:
                  "use mixed DSD (requires -d)");
         add_flag("-e,--else_dec", use_else_dec,
                  "exact synthesis + Shannon fallback (DSD)");
+        
+        add_flag("--dm,--dsd_mix", use_dsd_mix_fallback,
+                 "mixed DSD (-m) fallback when BD cannot proceed (-b)");
     }
 
 protected:
@@ -156,6 +163,12 @@ protected:
             algorithm_selected = true;
         if (!algorithm_selected)
             use_bi_dec = true;
+
+        if (use_dsd_mix_fallback && !use_bi_dec)
+        {
+            std::cout << "❌ --dm requires -b (bi-decomposition)\n";
+            return;
+        }
 
         if (use_bi_dec && use_dsd)
         {
@@ -238,7 +251,7 @@ protected:
             switch (strategy)
             {
             case resyn_strategy::bi_dec:
-                root_id = run_bi_decomp_for_resyn(binary01, use_else_dec);
+                root_id = run_bi_decomp_for_resyn(binary01, use_else_dec,use_dsd_mix_fallback);
                 break;
 
             case resyn_strategy::dsd:
@@ -315,6 +328,7 @@ private:
     bool use_strong_dsd = false;
     bool use_mix_dsd = false;
     bool use_else_dec = false;
+    bool use_dsd_mix_fallback = false;
 };
 
 ALICE_ADD_COMMAND(lut_resyn, "STP")
