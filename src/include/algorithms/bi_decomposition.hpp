@@ -19,6 +19,8 @@ int new_node(const std::string&, const std::vector<int>&);
 inline bool BD_MINIMAL_OUTPUT = false;
 // When true, bi-decomposition search only considers cases with k2 == 0.
 inline bool BD_ONLY_K2_EQ_0 = false;
+// When true, abort BD recursion on failure to enable external fallback (e.g., DSD -m).
+inline bool BD_ENABLE_DSD_MIX_FALLBACK = false;
 
 // =====================================================
 // BiDecompResult
@@ -895,14 +897,20 @@ static int bi_decomp_recursive(const TT& f, int depth = 0)
 
 if (!found)
 {
-    // 对于 3 个及以上输入的函数，允许走 else_decompose；
-  // 其中 5 输入及以上会在 else_decompose 内先进行香农分解到 4 输入。
-  if (ENABLE_ELSE_DEC && nv >= 3)
-  {
-    std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 启用 exact 2-LUT refine\n";
-    auto ch = make_children_from_order(f);
-    return else_decompose(f, ch, depth);
-  }
+    if (BD_ENABLE_DSD_MIX_FALLBACK)
+    {
+        std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 触发 DSD -m 回退\n";
+        int max_var = 0;
+        for (int v : f.order)
+            max_var = std::max(max_var, v);
+
+        std::vector<int> local_to_global(max_var + 1, 0);
+        for (int v : f.order)
+            local_to_global[v] = v;
+
+        return dsd_factor_mix_impl(f, depth, &local_to_global, nullptr);
+    }
+
 
   std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 直接建树\n";
   return build_small_tree(f);
@@ -993,6 +1001,9 @@ if (!found)
     int L = bi_decomp_recursive(phi_tt, depth + 1);
     int R = bi_decomp_recursive(psi_tt, depth + 1);
 
+    if (L < 0 || R < 0)
+    return -1;
+
     // 创建当前节点（用 F 作为函数）
     return new_node(result.F01, {L, R});
 }
@@ -1003,11 +1014,14 @@ if (!found)
 inline bool run_bi_decomp_recursive(const std::string& binary01)
 {
     bool enable_else_dec = ENABLE_ELSE_DEC;
-   // RESET_NODE_GLOBAL(); 
+       bool enable_dsd_mix_fallback = BD_ENABLE_DSD_MIX_FALLBACK;
+   // RESET_NODE_GLOBAL();
        bool prev_minimal_output = BD_MINIMAL_OUTPUT;
     bool prev_only_k2_eq_0 = BD_ONLY_K2_EQ_0;
+      bool prev_dsd_mix_fallback = BD_ENABLE_DSD_MIX_FALLBACK;
     RESET_NODE_GLOBAL();
     ENABLE_ELSE_DEC = enable_else_dec;
+    BD_ENABLE_DSD_MIX_FALLBACK = enable_dsd_mix_fallback;
         BD_MINIMAL_OUTPUT = true;
 
     if (!is_power_of_two(binary01.size())) {
@@ -1048,6 +1062,14 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
     TT root_shrunk = shrink_to_support(root);
     int root_id = bi_decomp_recursive(root_shrunk, 0);
 
+        if (root_id < 0)
+    {
+        BD_MINIMAL_OUTPUT = prev_minimal_output;
+        BD_ONLY_K2_EQ_0 = prev_only_k2_eq_0;
+        BD_ENABLE_DSD_MIX_FALLBACK = prev_dsd_mix_fallback;
+        return false;
+    }
+
     // 打印最终节点列表
     std::cout << "\n===== 最终双分解节点列表 =====\n";
     for (auto& nd : NODE_LIST)
@@ -1082,5 +1104,6 @@ inline bool run_bi_decomp_recursive(const std::string& binary01)
 
     BD_MINIMAL_OUTPUT = prev_minimal_output;
     BD_ONLY_K2_EQ_0 = prev_only_k2_eq_0;
+       BD_ENABLE_DSD_MIX_FALLBACK = prev_dsd_mix_fallback;
     return true;
 }
