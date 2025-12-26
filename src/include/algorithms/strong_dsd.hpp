@@ -190,14 +190,19 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
     int min_k = 1;          // |Mx| >= 1
     int max_k = n - 2;      // |My| >= 2
 
-    for (int k = max_k; k >= min_k; --k)   
+ // Heuristic: prefer putting the newest (largest-id) variable into Mx first.
+    int preferred_var = *std::max_element(order.begin(), order.end());
+    int preferred_idx = -1;
+    for (int i = 0; i < (int)vp.size(); ++i) {
+        if (vp[i].var == preferred_var) {
+            preferred_idx = i;
+            break;
+        }
+    }
 
-    {
-        std::vector<int> comb(k);
-        for (int i = 0; i < k; ++i) comb[i] = i;
-
-        while (true)
-        {
+  for (int k = max_k; k >= min_k; --k)
+  {
+        auto try_combination = [&](const std::vector<int>& comb) -> bool {
             // mx positions from comb
             std::vector<int> mx_pos;
             mx_pos.reserve(k);
@@ -342,11 +347,45 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
                     print_tt_with_order("当前 split 的 My", My, my_vars_msb2lsb, depth_for_print);
                 }
 
-                return out;
+                 return true;
             }
 
-            NEXT_COMBINATION:
-            if (!next_combination(comb, (int)vp.size())) break;
+           return false;
+        };
+
+        auto contains_preferred = [&](const std::vector<int>& comb) {
+            return preferred_idx >= 0 &&
+                   std::find(comb.begin(), comb.end(), preferred_idx) != comb.end();
+        };
+
+        auto enumerate_phase = [&](bool must_contain_preferred) -> bool {
+            std::vector<int> comb(k);
+            for (int i = 0; i < k; ++i) comb[i] = i;
+
+            while (true)
+            {
+                bool has_preferred = contains_preferred(comb);
+
+                if (preferred_idx < 0 ||
+                    (must_contain_preferred ? has_preferred : !has_preferred))
+                {
+                    if (try_combination(comb)) return true;
+                }
+
+                if (!next_combination(comb, (int)vp.size())) break;
+            }
+
+            return false;
+        };
+
+        if (preferred_idx >= 0)
+        {
+            if (enumerate_phase(true)) return out;   // phase 1: must contain preferred
+            if (enumerate_phase(false)) return out;  // phase 2: the rest
+        }
+        else
+        {
+            if (enumerate_phase(true)) return out;   // preferred not found, single pass
         }
     }
 
