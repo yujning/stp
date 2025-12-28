@@ -4,6 +4,8 @@
 #include <iostream>
 #include <iomanip>
 #include <cmath>
+#include <chrono>
+
 #include <alice/alice.hpp>
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
@@ -12,8 +14,10 @@
 #include "../include/algorithms/node_global.hpp"
 #include "../include/algorithms/stp_dsd.hpp"
 #include "../include/algorithms/bi_decomposition.hpp"
-#include "../include/algorithms/bi_dec_else_dec.hpp"   
+#include "../include/algorithms/bi_dec_else_dec.hpp"
 #include "../include/algorithms/mix_dsd.hpp"
+#include "../include/algorithms/strong_bi_dec.hpp"   // ⭐ 新增
+
 namespace alice
 {
 
@@ -21,33 +25,34 @@ class bd_command : public command
 {
 public:
     explicit bd_command(const environment::ptr &env)
-        : command(env, "Bi-decomposition (recursive)")
+        : command(env, "Bi-decomposition (recursive / shared)")
     {
         add_option("-f, --factor", hex_input,
                    "truth table as hex string")->required();
 
-        // Only decompose k2=0 cases
         add_flag("-d, --k2_zero", only_k2_zero,
-                 "only try bi-decomposition with k2=0,dsd,顶层为2输入");
+                 "only try bi-decomposition with k2=0");
 
-        // ⭐ 加 else dec fallback 开关
         add_flag("-e, --else_dec", use_else_dec,
                  "enable else_dec fallback when BD fails");
 
-        
         add_flag("--dm, --dsd_mix", use_dsd_mix,
-                 "enable mixed DSD (-m) fallback when BD cannot proceed");
+                 "enable mixed DSD fallback");
+
+        // ⭐⭐⭐ 新增 shared bi-dec
+        add_flag("-s, --shared", use_shared_bi,
+                 "enable strong bi-decomposition with shared variables (7~10 vars)");
     }
 
 protected:
     void execute() override
     {
         using clk = std::chrono::high_resolution_clock;
-        
-        use_else_dec = is_set("else_dec");
-        use_dsd_mix = is_set("dsd_mix") || is_set("dm");
-        only_k2_zero = is_set("k2_zero");
-        std::string hex = hex_input;
+
+        use_else_dec   = is_set("else_dec");
+        use_dsd_mix    = is_set("dsd_mix") || is_set("dm");
+        only_k2_zero   = is_set("k2_zero");
+        use_shared_bi  = is_set("shared") || is_set("s");
 
         if (!is_set("factor"))
         {
@@ -56,8 +61,9 @@ protected:
         }
 
         // ------------------------------------------------------
-        // 解析 Hex 变成真值表（binary）
+        // Parse hex → binary TT
         // ------------------------------------------------------
+        std::string hex = hex_input;
         if (hex.rfind("0x", 0) == 0 || hex.rfind("0X", 0) == 0)
             hex = hex.substr(2);
 
@@ -84,37 +90,58 @@ protected:
         kitty::print_binary(tt, oss);
         std::string binF = oss.str();
 
-        std::cout << "📘 TT = " << binF << "  (vars=" << nvars << ")\n";
+        std::cout << "📘 TT = " << binF
+                  << "  (vars=" << nvars << ")\n";
 
         // ------------------------------------------------------
-        // 设置 其他分解模式（全局变量）
+        // Global switches
         // ------------------------------------------------------
-        ENABLE_ELSE_DEC = use_else_dec;  // ⭐ 关键一步
+        ENABLE_ELSE_DEC = use_else_dec;
         BD_ENABLE_DSD_MIX_FALLBACK = use_dsd_mix;
         BD_ONLY_K2_EQ_0 = only_k2_zero;
 
         auto t1 = clk::now();
 
-        
-        bool success = run_bi_decomp_recursive(binF);
+        bool success = false;
+
+        // ======================================================
+        // ⭐ 优先：Strong Bi-Dec with shared vars
+        // ======================================================
+        if (use_shared_bi)
+        {
+            std::cout << "🔀 Try strong bi-decomposition (shared vars)...\n";
+
+            success = run_strong_bi_dec_and_build_dag(binF);
+
+            if (!success)
+                std::cout << "⚠️ Strong bi-dec failed\n";
+        }
+        else
+        {
+            success = run_bi_decomp_recursive(binF);
+        }
 
         auto t2 = clk::now();
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
         if (!success)
-          {
+        {
             if (use_dsd_mix)
             {
-                std::cout << "⚠️ BD 失败，启动 DSD -m 回退…\n";
+                std::cout << "⚠️ BD failed, start DSD -m fallback...\n";
                 auto t_mix_start = clk::now();
                 run_dsd_recursive_mix(binF);
                 auto t_mix_end = clk::now();
-                auto mix_us = std::chrono::duration_cast<std::chrono::microseconds>(t_mix_end - t_mix_start).count();
-                std::cout << "⏱ DSD -m fallback time = " << mix_us << " us\n";
+                auto mix_us =
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        t_mix_end - t_mix_start).count();
+                std::cout << "⏱ DSD -m fallback time = "
+                          << mix_us << " us\n";
                 return;
             }
+
             std::cout << "❌ Decomposition failed\n";
-                 return;
+            return;
         }
 
         std::cout << "⏱ time = " << us << " us\n";
@@ -122,9 +149,10 @@ protected:
 
 private:
     std::string hex_input{};
-    bool use_else_dec = false;  // ⭐ 是否启用 其他分解
-    bool only_k2_zero = false;
-    bool use_dsd_mix = false;  
+    bool use_else_dec  = false;
+    bool only_k2_zero  = false;
+    bool use_dsd_mix   = false;
+    bool use_shared_bi = false;
 };
 
 ALICE_ADD_COMMAND(bd, "STP")
