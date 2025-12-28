@@ -16,7 +16,7 @@
 #include "../include/algorithms/bi_decomposition.hpp"
 #include "../include/algorithms/bi_dec_else_dec.hpp"
 #include "../include/algorithms/mix_dsd.hpp"
-#include "../include/algorithms/strong_bi_dec.hpp"   // ⭐ 新增
+
 
 namespace alice
 {
@@ -25,7 +25,7 @@ class bd_command : public command
 {
 public:
     explicit bd_command(const environment::ptr &env)
-        : command(env, "Bi-decomposition (recursive / shared)")
+            : command(env, "Bi-decomposition (recursive)")
     {
         add_option("-f, --factor", hex_input,
                    "truth table as hex string")->required();
@@ -39,9 +39,6 @@ public:
         add_flag("--dm, --dsd_mix", use_dsd_mix,
                  "enable mixed DSD fallback");
 
-        // ⭐⭐⭐ 新增 shared bi-dec
-        add_flag("-s, --shared", use_shared_bi,
-                 "enable strong bi-decomposition with shared variables (7~10 vars)");
     }
 
 protected:
@@ -52,11 +49,11 @@ protected:
         use_else_dec   = is_set("else_dec");
         use_dsd_mix    = is_set("dsd_mix") || is_set("dm");
         only_k2_zero   = is_set("k2_zero");
-        use_shared_bi  = is_set("shared") || is_set("s");
+        
 
         if (!is_set("factor"))
         {
-            std::cout << "❌ Usage: bd -f <hex> [-s]\n";
+             std::cout << "❌ Usage: bd -f <hex>\n";
             return;
         }
 
@@ -102,25 +99,7 @@ protected:
 
         auto t1 = clk::now();
 
-        bool success = false;
-
-        // ======================================================
-        // ⭐ 优先：Strong Bi-Dec with shared vars
-        // ======================================================
-        if (use_shared_bi)
-        {
-            std::cout << "🔀 Try strong bi-decomposition (shared vars)...\n";
-
-            success = run_strong_bi_dec_and_build_dag(binF);
-
-            if (!success)
-                std::cout << "⚠️ Strong bi-dec failed\n";
-        }
-        else
-        {
-            success = run_bi_decomp_recursive(binF);
-        }
-
+        bool success = run_bi_decomp_recursive(binF);
         auto t2 = clk::now();
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
@@ -152,7 +131,7 @@ private:
     bool use_else_dec  = false;
     bool only_k2_zero  = false;
     bool use_dsd_mix   = false;
-    bool use_shared_bi = false;
+   
 };
 
 ALICE_ADD_COMMAND(bd, "STP")
