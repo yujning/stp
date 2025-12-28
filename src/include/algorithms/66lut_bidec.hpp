@@ -17,29 +17,50 @@ inline uint64_t pow2(int k) { return 1ull << k; }
 
 // =====================================================
 // 变量重排（编码映射）
-// new_order: MSB -> LSB（1-based 原变量编号）
-// 原始 TT 顺序假定：n,n-1,...,1
+// new_order / old_order: MSB -> LSB（1-based 原变量编号）
+// 说明：输入/输出 mf 的存储顺序均为：下标0对应(11..1)，下标N-1对应(00..0)
 // =====================================================
 inline std::string reorder_tt_by_var_order(
     const std::string& mf,
     int n,
-    const std::vector<int>& new_order_msb2lsb)
+    const std::vector<int>& new_order_msb2lsb,
+    const std::vector<int>& old_order_msb2lsb)
 {
     const size_t N = mf.size();
     std::string out(N, '0');
 
-    for (size_t new_idx = 0; new_idx < N; ++new_idx)
+    // var -> position in old_order (MSB position = 0)
+    std::vector<int> pos_in_old(n + 1, -1);
+    for (int i = 0; i < n; ++i) {
+        int v = old_order_msb2lsb[i];
+        if (v >= 1 && v <= n) pos_in_old[v] = i;
+    }
+
+    for (size_t bottom_idx = 0; bottom_idx < N; ++bottom_idx)
     {
-        uint64_t old_idx = 0;
+        // bottom_idx: storage order 11..1 -> 00..0
+        // convert to standard index (00..0 -> 11..1)
+        uint64_t new_idx_std = (uint64_t)N - 1 - bottom_idx;
+
+        uint64_t old_idx_std = 0;
+
+        // decode bits according to new_order (MSB->LSB)
         for (int i = 0; i < n; ++i)
         {
-            int bit = (new_idx >> (n - 1 - i)) & 1;
-            int var = new_order_msb2lsb[i];   // 1-based
-            int pos = var - 1;                // 原 MSB 位置
-            old_idx |= (uint64_t(bit) << (n - 1 - pos));
+            int bit = (new_idx_std >> (n - 1 - i)) & 1;
+            int var = new_order_msb2lsb[i]; // 1-based
+
+            int pos = (var >= 1 && var <= n) ? pos_in_old[var] : -1;
+            if (pos < 0) continue;
+
+            old_idx_std |= (uint64_t(bit) << (n - 1 - pos));
         }
-        out[new_idx] = mf[old_idx];
+
+        // convert back to storage order index
+        uint64_t old_idx_bottom = (uint64_t)N - 1 - old_idx_std;
+        out[bottom_idx] = mf[(size_t)old_idx_bottom];
     }
+
     return out;
 }
 
@@ -110,6 +131,42 @@ enumerate_variable_partitions(int n, int x, int y, int z)
 inline uint64_t mf_index(uint64_t a, uint64_t b, uint64_t c, int y, int z)
 {
     return (a << (y + z)) | (b << z) | c;
+}
+// =====================================================
+// 打印重排后的真值表（存储顺序：11...1 → 00...0）
+// =====================================================
+inline void print_reordered_tt(
+    const std::string& mf,
+    int n,
+    const std::vector<int>& order_msb2lsb)
+{
+    std::cout << "🧮 Reordered TT (order: ";
+    for (size_t i = 0; i < order_msb2lsb.size(); ++i)
+    {
+        if (i) std::cout << ",";
+        std::cout << order_msb2lsb[i];
+    }
+    //std::cout << " — 11...1→00...0)\n";
+
+    std::string seq;
+    seq.reserve(mf.size());
+
+    // for (size_t bottom_idx = 0; bottom_idx < mf.size(); ++bottom_idx)
+    // {
+    //     uint64_t top_idx = (uint64_t)mf.size() - 1 - bottom_idx;
+
+    //     for (int i = 0; i < n; ++i)
+    //     {
+    //         int bit = (top_idx >> (n - 1 - i)) & 1;
+    //         int var = order_msb2lsb[i];
+    //         std::cout << "  v" << var << "=" << bit;
+    //     }
+
+    //     std::cout << " -> " << mf[bottom_idx] << "\n";
+    //     seq.push_back(mf[bottom_idx]);
+    // }
+
+    std::cout << "🧮 TT sequence: " << seq << "\n";
 }
 
 // =====================================================
@@ -260,6 +317,11 @@ inline bool run_strong_bi_dec_and_build_dag(const std::string& MF)
     while ((1u<<n)<MF.size()) n++;
     if ((1u<<n)!=MF.size()) return false;
 
+    // 原始 TT 变量顺序（MSB->LSB）：n,n-1,...,1  (你说默认 87654321)
+    std::vector<int> original_order(n);
+    for (int i = 0; i < n; ++i)
+        original_order[i] = n - i;
+
     RESET_NODE_GLOBAL();
 
     for (auto [x,y,z] : enumerate_xyz(n))
@@ -273,7 +335,9 @@ inline bool run_strong_bi_dec_and_build_dag(const std::string& MF)
             new_order.insert(new_order.end(), C.begin(), C.end());
 
             std::string MFp =
-                reorder_tt_by_var_order(MF,n,new_order);
+             reorder_tt_by_var_order(MF,n,new_order, original_order);
+
+            print_reordered_tt(MFp, n, new_order);
 
             std::cout<<"📐 Try "<<x<<"+"<<y<<"+"<<z
                      <<"  A={ "; for(int v:A) std::cout<<v<<" ";
