@@ -7,11 +7,45 @@
 #include <algorithm>
 #include <iostream>
 #include <cstdint>
+#include "node_global.hpp"
 
 // =====================================================
 // 工具
 // =====================================================
 inline uint64_t pow2(int k) { return 1ull << k; }
+
+inline std::vector<int> make_children_with_placeholder(
+    const std::vector<int>& order_msb2lsb,
+    int placeholder_var_id,
+    int placeholder_node_id)
+{
+    std::vector<int> ch;
+    ch.reserve(order_msb2lsb.size());
+
+    // 先补齐实际输入变量，保持 FINAL_VAR_ORDER（跳过占位符）
+    for (int var_id : order_msb2lsb)
+    {
+        if (var_id == placeholder_var_id)
+            continue;
+
+        new_in_node(var_id);
+
+        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
+            FINAL_VAR_ORDER.push_back(var_id);
+    }
+
+    // klut 的 PI 顺序对应 kitty 变量顺序（最低位在前），所以反向绑定
+    for (auto it = order_msb2lsb.rbegin(); it != order_msb2lsb.rend(); ++it)
+    {
+        int var_id = *it;
+        if (var_id == placeholder_var_id)
+            ch.push_back(placeholder_node_id);
+        else
+            ch.push_back(new_in_node(var_id));
+    }
+
+    return ch;
+}
 
 // A|B|C → MF index (MSB→LSB)
 inline uint64_t mf_index(uint64_t a, uint64_t b, uint64_t c, int y, int z)
@@ -161,9 +195,12 @@ inline bool solve_MX_MY_from_MXY(
 // =====================================================
 inline bool run_strong_bi_dec_and_build_dag(const std::string& MF)
 {
+    
     int n=0;
     while ((1u<<n)<MF.size()) n++;
     if ((1u<<n)!=MF.size()) return false;
+
+    RESET_NODE_GLOBAL();
 
     std::cout<<"🔀 Try strong bi-decomposition (shared vars)...\n";
 
@@ -185,6 +222,37 @@ inline bool run_strong_bi_dec_and_build_dag(const std::string& MF)
         std::cout<<"✅ Strong Bi-Decomposition found\n";
         std::cout<<"🟦 MY = "<<MY<<"\n";
         std::cout<<"🟥 MX = "<<MX<<"\n";
+
+        ORIGINAL_VAR_COUNT = n;
+
+        // A(x) | B(y, shared) | C(z)
+        std::vector<int> A_vars, B_vars, C_vars;
+        for (int i = 0; i < x; ++i) A_vars.push_back(n - i);
+        for (int i = 0; i < y; ++i) B_vars.push_back(n - x - i);
+        for (int i = 0; i < z; ++i) C_vars.push_back(n - x - y - i);
+
+        // MY(A,B)
+        TT tt_my;
+        tt_my.f01 = MY;
+        tt_my.order.insert(tt_my.order.end(), A_vars.begin(), A_vars.end());
+        tt_my.order.insert(tt_my.order.end(), B_vars.begin(), B_vars.end());
+
+        auto children_my = make_children_from_order(tt_my);
+        std::reverse(children_my.begin(), children_my.end());
+        int my_node = new_node(MY, children_my);
+
+        // MX(MY, B, C)
+        int placeholder_var_id = n + 1; // 不与真实变量冲突
+        std::vector<int> order_mx;
+        order_mx.push_back(placeholder_var_id);
+        order_mx.insert(order_mx.end(), B_vars.begin(), B_vars.end());
+        order_mx.insert(order_mx.end(), C_vars.begin(), C_vars.end());
+
+        auto children_mx = make_children_with_placeholder(
+            order_mx, placeholder_var_id, my_node);
+        std::reverse(children_mx.begin(), children_mx.end());
+
+        int root_id = new_node(MX, children_mx);    
 
         
         return true;
