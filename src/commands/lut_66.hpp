@@ -13,6 +13,7 @@
 
 #include "../include/algorithms/node_global.hpp"
 #include "../include/algorithms/66lut_bidec.hpp"
+#include "../include/algorithms/66lut_dsd.hpp"   // ★ 新增
 
 namespace alice
 {
@@ -21,10 +22,13 @@ class lut_66_command : public command
 {
 public:
     explicit lut_66_command(const environment::ptr& env)
-        : command(env, "Strong bi-decomposition (6-6 LUT focus)")
+        : command(env, "66-LUT decomposition (bi-dec or strong DSD)")
     {
         add_option("-f, --factor", hex_input,
                    "truth table as hex string")->required();
+
+        add_flag("-d, --dsd",
+                 "use 66-LUT Strong DSD instead of bi-decomposition");
     }
 
 protected:
@@ -63,7 +67,20 @@ protected:
                   << "  (vars=" << nvars << ")\n";
 
         auto t1 = clk::now();
-        bool success = run_strong_bi_dec_and_build_dag(binF);
+
+        bool success = false;
+
+        if (is_set("dsd"))
+        {
+            std::cout << "🔀 Mode: 66-LUT Strong DSD\n";
+            success = run_66lut_dsd_and_build_dag(binF);
+        }
+        else
+        {
+            std::cout << "🔀 Mode: 66-LUT Bi-Decomposition\n";
+            success = run_strong_bi_dec_and_build_dag(binF);
+        }
+
         auto t2 = clk::now();
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
