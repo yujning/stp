@@ -25,6 +25,10 @@
 #include "../include/algorithms/strong_dsd.hpp"
 #include "../include/algorithms/mix_dsd.hpp"
 
+#include "../include/algorithms/66lut_bidec.hpp"
+#include "../include/algorithms/66lut_dsd.hpp"
+
+
 namespace alice
 {
 
@@ -102,6 +106,56 @@ static int run_strong_dsd_for_resyn(const std::string& binary01)
     return build_strong_dsd_nodes(root_shrunk.f01, root_shrunk.order, 0);
 }
 
+static bool run_lut66_for_resyn(const std::string& binary01, int nvars, int& root_id)
+{
+    TT root;
+    root.f01 = binary01;
+    root.order.resize(nvars);
+    for (int i = 0; i < nvars; ++i)
+        root.order[i] = nvars - i;
+
+    TT root_shrunk = shrink_to_support(root);
+    const unsigned shrunk_vars = static_cast<unsigned>(root_shrunk.order.size());
+
+    if (shrunk_vars <= 6)
+    {
+        RESET_NODE_GLOBAL();
+        ORIGINAL_VAR_COUNT = static_cast<int>(shrunk_vars);
+
+        std::vector<int> sorted_vars = root_shrunk.order;
+        std::sort(sorted_vars.begin(), sorted_vars.end());
+        sorted_vars.erase(std::unique(sorted_vars.begin(), sorted_vars.end()), sorted_vars.end());
+        for (int var_id : sorted_vars)
+            new_in_node(var_id);
+
+        for (int var_id : root_shrunk.order)
+        {
+            if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
+                FINAL_VAR_ORDER.push_back(var_id);
+        }
+
+        std::vector<int> children;
+        children.reserve(root_shrunk.order.size());
+
+        for (int var_id : root_shrunk.order)
+            children.push_back(new_in_node(var_id));
+
+        new_node(root_shrunk.f01, children);
+
+        root_id = NODE_LIST.empty() ? 0 : NODE_LIST.back().id;
+        return true;
+    }
+
+    bool success = run_66lut_dsd_and_build_dag(root_shrunk);
+    if (!success)
+        success = run_strong_bi_dec_and_build_dag(root_shrunk);
+
+    if (success)
+        root_id = NODE_LIST.empty() ? 0 : NODE_LIST.back().id;
+
+    return success;
+}
+
 /*============================================================*
  * LUT RESYN COMMAND
  *============================================================*/
@@ -127,6 +181,10 @@ public:
         
         add_flag("--dm,--dsd_mix", use_dsd_mix_fallback,
                  "mixed DSD (-m) fallback when BD cannot proceed (-b)");
+
+        
+        add_flag("--lut66", use_lut66,
+                 "per-LUT 66-LUT decomposition (same as `lut66 -f`)");
     }
 
 protected:
@@ -158,43 +216,52 @@ protected:
         }
 
         /*---------------- option check ----------------*/
-        bool algorithm_selected = use_bi_dec || use_dsd;
-        if (use_strong_dsd || use_mix_dsd)
-            algorithm_selected = true;
-        if (!algorithm_selected)
-            use_bi_dec = true;
-
-        if (use_dsd_mix_fallback && !use_bi_dec)
+        if (use_lut66 && (use_bi_dec || use_dsd || use_strong_dsd || use_mix_dsd|| use_else_dec || use_dsd_mix_fallback))
         {
-            std::cout << "❌ --dm requires -b (bi-decomposition)\n";
-            return;
-        }
-
-        if (use_bi_dec && use_dsd)
-        {
-            std::cout << "❌ -b and -d cannot be used together\n";
-            return;
-        }
-        if (!use_dsd && (use_strong_dsd || use_mix_dsd))
-        {
-            std::cout << "❌ -s / -m require -d\n";
-            return;
-        }
-
-        if (use_strong_dsd && use_mix_dsd)
-        {
-            std::cout << "❌ -s and -m cannot be used together\n";
+             std::cout << "❌ --lut66 cannot be combined with other options\n";
             return;
         }
 
         resyn_strategy strategy = resyn_strategy::bi_dec;
-        if (use_dsd)
+        if (!use_lut66)
         {
-            strategy = resyn_strategy::dsd;
-            if (use_strong_dsd)
-                strategy = resyn_strategy::strong_dsd;
-            else if (use_mix_dsd)
-                strategy = resyn_strategy::mix_dsd;
+            bool algorithm_selected = use_bi_dec || use_dsd;
+            if (use_strong_dsd || use_mix_dsd)
+                algorithm_selected = true;
+            if (!algorithm_selected)
+                use_bi_dec = true;
+
+            if (use_dsd_mix_fallback && !use_bi_dec)
+            {
+                std::cout << "❌ --dm requires -b (bi-decomposition)\n";
+                return;
+            }
+
+ if (use_bi_dec && use_dsd)
+            {
+                std::cout << "❌ -b and -d cannot be used together\n";
+                return;
+            }
+            if (!use_dsd && (use_strong_dsd || use_mix_dsd))
+            {
+                std::cout << "❌ -s / -m require -d\n";
+                return;
+            }
+
+            if (use_strong_dsd && use_mix_dsd)
+            {
+                std::cout << "❌ -s and -m cannot be used together\n";
+                return;
+            }
+
+            if (use_dsd)
+            {
+                strategy = resyn_strategy::dsd;
+                if (use_strong_dsd)
+                    strategy = resyn_strategy::strong_dsd;
+                else if (use_mix_dsd)
+                    strategy = resyn_strategy::mix_dsd;
+            }
         }
 
         /*---------------- output file ----------------*/
@@ -231,46 +298,77 @@ protected:
         {
             const auto& lut = net.luts.at(name);
 
-            /* already 2-LUT */
-            if (lut.fanins.size() <= 2)
-            {
-                fout << name << " = LUT " << lut.hex << " (";
-                for (size_t i = 0; i < lut.fanins.size(); ++i)
-                {
-                    if (i) fout << ", ";
-                    fout << lut.fanins[i];
-                }
-                fout << ")\n";
-                continue;
-            }
+/*------------------------------------------------------------*
+ * RAW passthrough for --lut66 (same as other commands)
+ *------------------------------------------------------------*/
+if (use_lut66 && lut.fanins.size() <= 6)
+
+{
+    fout << name << " = LUT " << lut.hex << " (";
+    for (size_t i = 0; i < lut.fanins.size(); ++i)
+    {
+        if (i) fout << ", ";
+        fout << lut.fanins[i];
+    }
+    fout << ")\n";
+    continue;
+}
+
+/* already 2-LUT (non-lut66 paths) */
+if (lut.fanins.size() <= 2)
+{
+    fout << name << " = LUT " << lut.hex << " (";
+    for (size_t i = 0; i < lut.fanins.size(); ++i)
+    {
+        if (i) fout << ", ";
+        fout << lut.fanins[i];
+    }
+    fout << ")\n";
+    continue;
+}
+
 
             std::string binary01 = hex_to_binary(lut.hex);
             int root_id = 0;
 
             /*---------------- choose algorithm ----------------*/
-            switch (strategy)
+      if (use_lut66)
             {
-            case resyn_strategy::bi_dec:
-                root_id = run_bi_decomp_for_resyn(binary01, use_else_dec,use_dsd_mix_fallback);
-                break;
+                         bool success = run_lut66_for_resyn(binary01,
+                                                static_cast<int>(lut.fanins.size()),
+                                                root_id);
+                if (!success)
+                {
+                    std::cout << "❌ 66-LUT decomposition failed for " << name << "\n";
+                    return;
+                }
+            }
+            else
+            {
+                switch (strategy)
+                {
+                case resyn_strategy::bi_dec:
+                    root_id = run_bi_decomp_for_resyn(binary01, use_else_dec,use_dsd_mix_fallback);
+                    break;
 
-            case resyn_strategy::dsd:
-                root_id = run_dsd_recursive(binary01, use_else_dec);
-                break;
+                case resyn_strategy::dsd:
+                    root_id = run_dsd_recursive(binary01, use_else_dec);
+                    break;
 
-            case resyn_strategy::strong_dsd:
-                 if (use_else_dec)
-                    root_id = run_dsd_recursive(binary01, true);
-                else
-                    root_id = run_strong_dsd_for_resyn(binary01);
-                break;
+                case resyn_strategy::strong_dsd:
+                     if (use_else_dec)
+                        root_id = run_dsd_recursive(binary01, true);
+                    else
+                        root_id = run_strong_dsd_for_resyn(binary01);
+                    break;
 
-            case resyn_strategy::mix_dsd:
-                if (use_else_dec)
-                    root_id = run_dsd_recursive(binary01, true);   // -m -e
-                else
-                    root_id = run_dsd_recursive_mix(binary01);    // -m
-                break;
+                case resyn_strategy::mix_dsd:
+                    if (use_else_dec)
+                        root_id = run_dsd_recursive(binary01, true);   // -m -e
+                    else
+                        root_id = run_dsd_recursive_mix(binary01);    // -m
+                    break;
+                }
             }
 
             /*---------------- name binding ----------------*/
@@ -329,6 +427,7 @@ private:
     bool use_mix_dsd = false;
     bool use_else_dec = false;
     bool use_dsd_mix_fallback = false;
+    bool use_lut66 = false;
 };
 
 ALICE_ADD_COMMAND(lut_resyn, "STP")
