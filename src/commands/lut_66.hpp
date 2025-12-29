@@ -22,13 +22,16 @@ class lut_66_command : public command
 {
 public:
     explicit lut_66_command(const environment::ptr& env)
-        : command(env, "66-LUT decomposition (bi-dec or strong DSD)")
+        : command(env, "66-LUT decomposition (disjoint-first)")
     {
         add_option("-f, --factor", hex_input,
                    "truth table as hex string")->required();
 
         add_flag("-d, --dsd",
-                 "use 66-LUT Strong DSD instead of bi-decomposition");
+                        "only run 66-LUT Strong DSD (disjoint detection)");
+
+        add_flag("-b, --bidec",
+                 "force 66-LUT bi-decomposition (legacy -f behavior)");
     }
 
 protected:
@@ -70,16 +73,39 @@ protected:
 
         bool success = false;
 
-        if (is_set("dsd"))
+        const bool only_dsd   = is_set("dsd");
+        const bool only_bidec = is_set("bidec");
+
+        if (only_dsd && only_bidec)
         {
-            std::cout << "🔀 Mode: 66-LUT Strong DSD\n";
+             std::cout << "❌ Options -d and -b cannot be used together.\n";
+            return;
+        }
+        if (only_dsd || !only_bidec)
+        {
+            std::cout << "🔀 Mode: 66-LUT Strong DSD (disjoint detection)\n";
             success = run_66lut_dsd_and_build_dag(binF);
+
+            if (success || only_dsd)
+            {
+                auto t2 = clk::now();
+                auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+
+                if (!success)
+                {
+                    std::cout << "❌ Decomposition failed\n";
+                    return;
+                }
+
+                std::cout << "⏱ time = " << us << " us\n";
+                return;
+            }
+
+            std::cout << "⚠️ DSD failed, falling back to 66-LUT bi-decomposition...\n";
         }
-        else
-        {
-            std::cout << "🔀 Mode: 66-LUT Bi-Decomposition\n";
-            success = run_strong_bi_dec_and_build_dag(binF);
-        }
+
+        std::cout << "🔀 Mode: 66-LUT Bi-Decomposition (-b legacy)\n";
+        success = run_strong_bi_dec_and_build_dag(binF);
 
         auto t2 = clk::now();
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
