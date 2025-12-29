@@ -5,6 +5,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <algorithm>
+#include <vector>
 
 #include <alice/alice.hpp>
 #include <kitty/constructors.hpp>
@@ -70,6 +72,43 @@ protected:
                   << "  (vars=" << nvars << ")\n";
 
         auto t1 = clk::now();
+
+                if (nvars <= 6)
+        {
+            std::cout << "🔀 Mode: single 6-LUT (no decomposition needed)\n";
+
+            RESET_NODE_GLOBAL();
+            ORIGINAL_VAR_COUNT = nvars;
+
+            std::vector<int> order(nvars);
+            for (int i = 0; i < nvars; ++i)
+                order[i] = nvars - i;
+
+            std::vector<int> sorted_vars = order;
+            std::sort(sorted_vars.begin(), sorted_vars.end());
+            sorted_vars.erase(std::unique(sorted_vars.begin(), sorted_vars.end()), sorted_vars.end());
+            for (int var_id : sorted_vars)
+                new_in_node(var_id);
+
+            for (int var_id : order)
+            {
+                if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
+                    FINAL_VAR_ORDER.push_back(var_id);
+            }
+
+            std::vector<int> children;
+            children.reserve(order.size());
+            for (auto it = order.rbegin(); it != order.rend(); ++it)
+                children.push_back(new_in_node(*it));
+
+            new_node(binF, children);
+
+            auto t2 = clk::now();
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+            std::cout << "⏱ time = " << us << " us\n";
+            return;
+        }
+
 
         bool success = false;
 
