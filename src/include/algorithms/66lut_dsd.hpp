@@ -336,19 +336,15 @@ inline std::vector<int> make_children_from_order_with_placeholder_66(
 // ★ 入口：只做一次 66-LUT DSD，然后按 “MY -> MX(含MY占位)” 方式建 DAG
 // 原变量默认顺序：n,n-1,...,1 (MSB->LSB)
 // =====================================================
-inline bool run_66lut_dsd_and_build_dag(const std::string& MF)
+inline bool run_66lut_dsd_and_build_dag(const TT& root_tt)
 {
-    int n = 0;
-    while ((1u << n) < MF.size()) n++;
-    if ((1u << n) != MF.size()) return false;
-
-    // default order: MSB->LSB = n,n-1,...,1
-    std::vector<int> order(n);
-    for (int i = 0; i < n; ++i) order[i] = n - i;
+    int n = (int)root_tt.order.size();
+    if ((size_t(1) << n) != root_tt.f01.size()) return false;
 
     RESET_NODE_GLOBAL();
-    ORIGINAL_VAR_COUNT = n;   
-    auto res = run_66lut_dsd_by_mx_subset(MF, order, /*depth_for_print=*/0);
+    ORIGINAL_VAR_COUNT = n;
+    auto res = run_66lut_dsd_by_mx_subset(root_tt.f01, root_tt.order,
+                                          /*depth_for_print=*/0);
     if (!res.found) {
         if (LUT66_DSD_DEBUG_PRINT) std::cout << "❌ No valid 66-LUT Strong DSD split\n";
         return false;

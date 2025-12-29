@@ -16,7 +16,7 @@
 #include "../include/algorithms/node_global.hpp"
 #include "../include/algorithms/66lut_bidec.hpp"
 #include "../include/algorithms/66lut_dsd.hpp"   // ★ 新增
-
+#include "../include/algorithms/stp_dsd.hpp"
 namespace alice
 {
 
@@ -71,41 +71,51 @@ protected:
         std::cout << "📘 TT = " << binF
                   << "  (vars=" << nvars << ")\n";
 
+                      TT root;
+        root.f01 = binF;
+        root.order.resize(nvars);
+        for (unsigned i = 0; i < nvars; ++i)
+            root.order[i] = static_cast<int>(nvars - i);
+
+        TT root_shrunk = shrink_to_support(root);
+        const unsigned shrunk_vars = static_cast<unsigned>(root_shrunk.order.size());
+
         auto t1 = clk::now();
 
-                if (nvars <= 6)
-        {
-            std::cout << "🔀 Mode: single 6-LUT (no decomposition needed)\n";
+ if (shrunk_vars <= 6)
+{
+    std::cout << "🔀 Mode: single 6-LUT (no decomposition needed)\n";
 
-            RESET_NODE_GLOBAL();
-            ORIGINAL_VAR_COUNT = nvars;
+    RESET_NODE_GLOBAL();
+    ORIGINAL_VAR_COUNT = static_cast<int>(shrunk_vars);
 
-            std::vector<int> order(nvars);
-            for (int i = 0; i < nvars; ++i)
-                order[i] = nvars - i;
+    std::vector<int> sorted_vars = root_shrunk.order;
+    std::sort(sorted_vars.begin(), sorted_vars.end());
+    sorted_vars.erase(std::unique(sorted_vars.begin(), sorted_vars.end()), sorted_vars.end());
+    for (int var_id : sorted_vars)
+        new_in_node(var_id);
 
-            std::vector<int> sorted_vars = order;
-            std::sort(sorted_vars.begin(), sorted_vars.end());
-            sorted_vars.erase(std::unique(sorted_vars.begin(), sorted_vars.end()), sorted_vars.end());
-            for (int var_id : sorted_vars)
-                new_in_node(var_id);
+    for (int var_id : root_shrunk.order)
+    {
+        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
+            FINAL_VAR_ORDER.push_back(var_id);
+    }
 
-            for (int var_id : order)
-            {
-                if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
-                    FINAL_VAR_ORDER.push_back(var_id);
-            }
+    std::vector<int> children;
+    children.reserve(root_shrunk.order.size());
 
-            std::vector<int> children;
-            children.reserve(order.size());
-            for (auto it = order.rbegin(); it != order.rend(); ++it)
-                children.push_back(new_in_node(*it));
+    // Preserve the shrunk variable order when emitting the single 6-LUT.
+    // write_bench() will reverse the child list again, so we keep the
+    // original order here (MSB->LSB) to ensure the final BENCH matches
+    // the printed variable mapping.
+    for (int var_id : root_shrunk.order)
+        children.push_back(new_in_node(var_id));
 
-            new_node(binF, children);
+    new_node(root_shrunk.f01, children);
 
-            auto t2 = clk::now();
-            auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-            std::cout << "⏱ time = " << us << " us\n";
+    auto t2 = clk::now();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    std::cout << "⏱ time = " << us << " us\n";
             return;
         }
 
@@ -123,7 +133,7 @@ protected:
         if (only_dsd || !only_bidec)
         {
             std::cout << "🔀 Mode: 66-LUT Strong DSD (disjoint detection)\n";
-            success = run_66lut_dsd_and_build_dag(binF);
+            success = run_66lut_dsd_and_build_dag(root_shrunk);
 
             if (success || only_dsd)
             {
@@ -144,7 +154,7 @@ protected:
         }
 
         std::cout << "🔀 Mode: 66-LUT Bi-Decomposition (-b legacy)\n";
-        success = run_strong_bi_dec_and_build_dag(binF);
+        success = run_strong_bi_dec_and_build_dag(root_shrunk);
 
         auto t2 = clk::now();
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();

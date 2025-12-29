@@ -7,7 +7,7 @@
 #include <iostream>
 #include <cstdint>
 #include <numeric>
-
+#include <unordered_map>
 #include "node_global.hpp"
 
 // =====================================================
@@ -30,11 +30,11 @@ inline std::string reorder_tt_by_var_order(
     std::string out(N, '0');
 
     // var -> position in old_order (MSB position = 0)
-    std::vector<int> pos_in_old(n + 1, -1);
-    for (int i = 0; i < n; ++i) {
-        int v = old_order_msb2lsb[i];
-        if (v >= 1 && v <= n) pos_in_old[v] = i;
-    }
+    std::unordered_map<int, int> pos_in_old;
+    pos_in_old.reserve(old_order_msb2lsb.size());
+    for (int i = 0; i < n; ++i)
+        pos_in_old[old_order_msb2lsb[i]] = i;
+
 
     for (size_t bottom_idx = 0; bottom_idx < N; ++bottom_idx)
     {
@@ -50,8 +50,9 @@ inline std::string reorder_tt_by_var_order(
             int bit = (new_idx_std >> (n - 1 - i)) & 1;
             int var = new_order_msb2lsb[i]; // 1-based
 
-            int pos = (var >= 1 && var <= n) ? pos_in_old[var] : -1;
-            if (pos < 0) continue;
+            auto it = pos_in_old.find(var);
+            if (it == pos_in_old.end()) continue;
+            int pos = it->second;
 
             old_idx_std |= (uint64_t(bit) << (n - 1 - pos));
         }
@@ -89,13 +90,14 @@ enumerate_xyz(int n)
 // =====================================================
 inline std::vector<
     std::tuple<std::vector<int>,std::vector<int>,std::vector<int>>>
-enumerate_variable_partitions(int n, int x, int y, int z)
+enumerate_variable_partitions(const std::vector<int>& vars_msb2lsb,
+                              int x, int y, int z)
 {
     std::vector<
         std::tuple<std::vector<int>,std::vector<int>,std::vector<int>>> parts;
 
-    std::vector<int> vars(n);
-    std::iota(vars.begin(), vars.end(), 1);
+     std::vector<int> vars = vars_msb2lsb;
+    int n = (int)vars.size();
 
     std::vector<bool> sel_b(n,false);
     std::fill(sel_b.begin(), sel_b.begin()+y, true);
@@ -311,22 +313,19 @@ inline std::vector<int> make_children_with_placeholder(
 // =====================================================
 // ★ 入口函数（最终）
 // =====================================================
-inline bool run_strong_bi_dec_and_build_dag(const std::string& MF)
+inline bool run_strong_bi_dec_and_build_dag(const TT& root_tt)
 {
-    int n=0;
-    while ((1u<<n)<MF.size()) n++;
-    if ((1u<<n)!=MF.size()) return false;
+    int n = (int)root_tt.order.size();
+    if ((size_t(1) << n) != root_tt.f01.size()) return false;
 
-    // 原始 TT 变量顺序（MSB->LSB）：n,n-1,...,1  (你说默认 87654321)
-    std::vector<int> original_order(n);
-    for (int i = 0; i < n; ++i)
-        original_order[i] = n - i;
+    // 原始 TT 变量顺序（MSB->LSB）
+    std::vector<int> original_order = root_tt.order;
 
     RESET_NODE_GLOBAL();
 
     for (auto [x,y,z] : enumerate_xyz(n))
     {
-        auto parts = enumerate_variable_partitions(n,x,y,z);
+        auto parts = enumerate_variable_partitions(original_order, x, y, z);
         for (const auto& [A,B,C] : parts)
         {
             std::vector<int> new_order;
@@ -335,7 +334,7 @@ inline bool run_strong_bi_dec_and_build_dag(const std::string& MF)
             new_order.insert(new_order.end(), C.begin(), C.end());
 
             std::string MFp =
-             reorder_tt_by_var_order(MF,n,new_order, original_order);
+             reorder_tt_by_var_order(root_tt.f01, n, new_order, original_order);
 
             print_reordered_tt(MFp, n, new_order);
 
