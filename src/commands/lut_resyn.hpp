@@ -329,20 +329,45 @@ if (lut.fanins.size() <= 2)
 
 
             std::string binary01 = hex_to_binary(lut.hex);
+
+            /*------------------------------------------------------------*
+             * RAW passthrough for --lut66 when LUT ≤6 inputs
+             *------------------------------------------------------------*/
+            if (use_lut66 && is_power_of_two(binary01.size()) &&
+                static_cast<int>(std::log2(binary01.size())) <= 6)
+            {
+                fout << name << " = LUT " << lut.hex << " (";
+                for (size_t i = 0; i < lut.fanins.size(); ++i)
+                {
+                    if (i) fout << ", ";
+                    fout << lut.fanins[i];
+                }
+                fout << ")\n";
+                continue;
+            }
             int root_id = 0;
 
             /*---------------- choose algorithm ----------------*/
-      if (use_lut66)
+        if (use_lut66)
+        {
+            bool success = run_lut66_for_resyn(binary01,
+                                        static_cast<int>(lut.fanins.size()),
+                                        root_id);
+            if (!success)
             {
-                         bool success = run_lut66_for_resyn(binary01,
-                                                static_cast<int>(lut.fanins.size()),
-                                                root_id);
-                if (!success)
+                std::cout << "⚠️ 66-LUT decomposition failed for " << name
+                        << ", writing original and continuing\n";
+
+                fout << name << " = LUT " << lut.hex << " (";
+                for (size_t i = 0; i < lut.fanins.size(); ++i)
                 {
-                    std::cout << "❌ 66-LUT decomposition failed for " << name << "\n";
-                    return;
+                    if (i) fout << ", ";
+                    fout << lut.fanins[i];
                 }
+                fout << ")\n\n";
+                continue;
             }
+        }
             else
             {
                 switch (strategy)

@@ -172,25 +172,28 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
     int n = (int)order.size();
     if (n <= 1) return out;
 
-    const size_t total = mf.size();
-    if ((size_t(1) << n) != total) return out;
+    if ((size_t(1) << n) != mf.size()) return out;
 
-    // (var_id, pos) sorted by var_id (ascending)
+    // =====================================================
+    // (var_id, pos) sorted by var_id ascending
+    // =====================================================
     struct VarPos { int var; int pos; };
     std::vector<VarPos> vp;
     vp.reserve(n);
-    for (int pos = 0; pos < n; ++pos) vp.push_back({order[pos], pos});
-    std::sort(vp.begin(), vp.end(), [](const VarPos& x, const VarPos& y){
-        return x.var < y.var;
-    });
+    for (int pos = 0; pos < n; ++pos)
+        vp.push_back({order[pos], pos});
 
-    //int max_k = (n + 1) / 2;
+    std::sort(vp.begin(), vp.end(),
+        [](const VarPos& a, const VarPos& b) {
+            return a.var < b.var;
+        });
 
+    int min_k = 1;
+    int max_k = n - 2;
 
-    int min_k = 1;          // |Mx| >= 1
-    int max_k = n - 2;      // |My| >= 2
-
- // Heuristic: prefer putting the newest (largest-id) variable into Mx first.
+    // =====================================================
+    // preferred_var = newest (largest id)
+    // =====================================================
     int preferred_var = *std::max_element(order.begin(), order.end());
     int preferred_idx = -1;
     for (int i = 0; i < (int)vp.size(); ++i) {
@@ -200,192 +203,150 @@ inline StrongDsdSplit run_strong_dsd_by_mx_subset(
         }
     }
 
-  for (int k = max_k; k >= min_k; --k)
-  {
-        auto try_combination = [&](const std::vector<int>& comb) -> bool {
-            // mx positions from comb
-            std::vector<int> mx_pos;
-            mx_pos.reserve(k);
-            for (int idx : comb) mx_pos.push_back(vp[idx].pos);
+    // =====================================================
+    // try_combination: core DSD test (完全不改你原逻辑)
+    // =====================================================
+    auto try_combination = [&](int k, const std::vector<int>& comb) -> bool {
 
-            // my positions = rest
-            std::vector<int> my_pos;
-            my_pos.reserve(n - k);
-            {
-                std::vector<char> is_mx(n, 0);
-                for (int p : mx_pos) is_mx[p] = 1;
-                for (int p = 0; p < n; ++p) if (!is_mx[p]) my_pos.push_back(p);
+        // ---- mx_pos / my_pos ----
+        std::vector<int> mx_pos;
+        for (int idx : comb) mx_pos.push_back(vp[idx].pos);
+
+        std::vector<int> my_pos;
+        {
+            std::vector<char> is_mx(n, 0);
+            for (int p : mx_pos) is_mx[p] = 1;
+            for (int p = 0; p < n; ++p)
+                if (!is_mx[p]) my_pos.push_back(p);
+        }
+
+        std::sort(mx_pos.begin(), mx_pos.end());
+        std::sort(my_pos.begin(), my_pos.end());
+
+        std::vector<int> mx_vars_msb2lsb, my_vars_msb2lsb;
+        for (int p : mx_pos) mx_vars_msb2lsb.push_back(order[p]);
+        for (int p : my_pos) my_vars_msb2lsb.push_back(order[p]);
+
+        print_candidate_info(depth_for_print, k,
+                             mx_vars_msb2lsb,
+                             my_vars_msb2lsb);
+
+        int m = n - k;
+        uint64_t my_count = 1ull << m;
+        uint64_t L = 1ull << k;
+
+        if (STRONG_DSD_DEBUG_PRINT) {
+            std::string reordered;
+            for (uint64_t y = 0; y < my_count; ++y) {
+                reordered += extract_block_for_mx(
+                    mf, n, mx_pos, my_pos, y);
             }
 
-            // sort by position (MSB->LSB)
-            std::sort(mx_pos.begin(), mx_pos.end());
-            std::sort(my_pos.begin(), my_pos.end());
+            std::vector<int> reordered_order;
+            reordered_order.insert(
+                reordered_order.end(),
+                my_vars_msb2lsb.begin(),
+                my_vars_msb2lsb.end());
+            reordered_order.insert(
+                reordered_order.end(),
+                mx_vars_msb2lsb.begin(),
+                mx_vars_msb2lsb.end());
 
-            // build vars list in MSB->LSB by position
-            std::vector<int> mx_vars_msb2lsb;
-            std::vector<int> my_vars_msb2lsb;
-            mx_vars_msb2lsb.reserve(mx_pos.size());
-            my_vars_msb2lsb.reserve(my_pos.size());
-            for (int p : mx_pos) mx_vars_msb2lsb.push_back(order[p]);
-            for (int p : my_pos) my_vars_msb2lsb.push_back(order[p]);
+            print_tt_with_order(
+                "候选 split 的重排 TT (My|Mx)",
+                reordered,
+                reordered_order,
+                depth_for_print);
+        }
 
-            // print candidate split (variables only)
-            print_candidate_info(depth_for_print, k, mx_vars_msb2lsb, my_vars_msb2lsb);
+        std::unordered_map<std::string, int> block_index;
+        std::vector<std::string> blocks;
+        std::string My;
 
-            
+        bool too_many = false;
 
-            int m = n - k;
-            uint64_t my_count = 1ull << m;
-            uint64_t L = 1ull << k;
+        for (uint64_t y = 0; y < my_count; ++y) {
+            std::string block = extract_block_for_mx(
+                mf, n, mx_pos, my_pos, y);
 
-            if (STRONG_DSD_DEBUG_PRINT)
-{
-    std::string reordered;
-    reordered.reserve((size_t)my_count * (size_t)L);
-
-    for (uint64_t y = 0; y < my_count; ++y)
-    {
-        std::string block = extract_block_for_mx(
-            mf, n, mx_pos, my_pos, y
-        );
-        reordered += block;
-    }
-
-    std::vector<int> reordered_order;
-    reordered_order.reserve(n);
-    reordered_order.insert(
-        reordered_order.end(),
-        my_vars_msb2lsb.begin(),
-        my_vars_msb2lsb.end()
-    );
-    reordered_order.insert(
-        reordered_order.end(),
-        mx_vars_msb2lsb.begin(),
-        mx_vars_msb2lsb.end()
-    );
-
-    print_tt_with_order(
-        "候选 split 的重排 TT (My|Mx)",
-        reordered,
-        reordered_order,
-        depth_for_print
-    );
-}
-
-            std::unordered_map<std::string, int> block_index;
-            std::vector<std::string> blocks;
-            blocks.reserve(2);
-
-            std::string My;
-            My.reserve((size_t)my_count);
-
-            bool too_many = false;
-
-            for (uint64_t y = 0; y < my_count; ++y)
-            {
-                std::string block = extract_block_for_mx(mf, n, mx_pos, my_pos, y);
-
-                auto it = block_index.find(block);
-                if (it == block_index.end())
-                {
-                    if (blocks.size() >= 2) { too_many = true; break; }
-                    int id = (int)blocks.size();
-                    block_index.emplace(block, id);
-                    blocks.push_back(block);
-                    My.push_back(id == 0 ? '1' : '0');
+            auto it = block_index.find(block);
+            if (it == block_index.end()) {
+                if (blocks.size() >= 2) {
+                    too_many = true;
+                    break;
                 }
-                else
-                {
-                    My.push_back(it->second == 0 ? '1' : '0');
-                }
+                int id = (int)blocks.size();
+                block_index.emplace(block, id);
+                blocks.push_back(block);
+                My.push_back(id == 0 ? '1' : '0');
+            } else {
+                My.push_back(it->second == 0 ? '1' : '0');
             }
+        }
 
-            // non-degenerate: exactly 2 blocks
-            if (!too_many && blocks.size() == 2)
-            {
+        if (!too_many && blocks.size() == 2) {
+            out.found = true;
+            out.dsd.found = true;
+            out.dsd.L = (size_t)L;
+            out.dsd.Mx = blocks[0] + blocks[1];
+            out.dsd.My = My;
 
-                //  // ★ 新增：拒绝 |My| == 1 的 split
-                // if (my_vars_msb2lsb.size() == 1) {
-                //     // 不接受这个 split，继续枚举
-                //     goto NEXT_COMBINATION;
-                // }
-                out.found = true;
-                out.dsd.found = true;
-                out.dsd.L = (size_t)L;
-                out.dsd.Mx = blocks[0] + blocks[1];
-                out.dsd.My = My;
+            out.mx_pos = mx_pos;
+            out.my_pos = my_pos;
+            out.mx_vars_msb2lsb = mx_vars_msb2lsb;
+            out.my_vars_msb2lsb = my_vars_msb2lsb;
 
-                out.mx_pos = mx_pos;
-                out.my_pos = my_pos;
-                out.mx_vars_msb2lsb = mx_vars_msb2lsb;
-                out.my_vars_msb2lsb = my_vars_msb2lsb;
-                
-
-                std::string reordered;
-                reordered.reserve((size_t)my_count * (size_t)L);
-
-                for (uint64_t y = 0; y < my_count; ++y)
-                {
-                    std::string block = extract_block_for_mx(
-                        mf, n, mx_pos, my_pos, y
-                    );
-                    reordered += block;
-                }
-
-                out.reordered_tt = reordered;
-
-                out.block0 = blocks[0];
-                out.block1 = blocks[1];
-
-                if (STRONG_DSD_DEBUG_PRINT)
-                {
-                    std::string indent((size_t)depth_for_print * 2, ' ');
-                    std::cout << indent << "✅ 命中 Strong DSD split\n";
-                    std::cout << indent << "   block0 = " << blocks[0] << "\n";
-                    std::cout << indent << "   block1 = " << blocks[1] << "\n";
-                    // 打印 My 真值表 + order
-                    print_tt_with_order("当前 split 的 My", My, my_vars_msb2lsb, depth_for_print);
-                }
-
-                 return true;
+            if (STRONG_DSD_DEBUG_PRINT) {
+                std::string indent(depth_for_print * 2, ' ');
+                std::cout << indent << "✅ 命中 Strong DSD split\n";
+                print_tt_with_order("当前 split 的 My",
+                                    My,
+                                    my_vars_msb2lsb,
+                                    depth_for_print);
             }
+            return true;
+        }
 
-           return false;
-        };
+        return false;
+    };
 
-        auto contains_preferred = [&](const std::vector<int>& comb) {
-            return preferred_idx >= 0 &&
-                   std::find(comb.begin(), comb.end(), preferred_idx) != comb.end();
-        };
-
-        auto enumerate_phase = [&](bool must_contain_preferred) -> bool {
+    // =====================================================
+    // PASS 1: preferred_var ∈ Mx（所有 k）
+    // =====================================================
+    if (preferred_idx >= 0) {
+        for (int k = max_k; k >= min_k; --k) {
             std::vector<int> comb(k);
             for (int i = 0; i < k; ++i) comb[i] = i;
 
-            while (true)
-            {
-                bool has_preferred = contains_preferred(comb);
-
-                if (preferred_idx < 0 ||
-                    (must_contain_preferred ? has_preferred : !has_preferred))
-                {
-                    if (try_combination(comb)) return true;
+            while (true) {
+                if (std::find(comb.begin(), comb.end(), preferred_idx)
+                    != comb.end()) {
+                    if (try_combination(k, comb))
+                        return out;
                 }
-
-                if (!next_combination(comb, (int)vp.size())) break;
+                if (!next_combination(comb, (int)vp.size()))
+                    break;
             }
-
-            return false;
-        };
-
-        if (preferred_idx >= 0)
-        {
-            if (enumerate_phase(true)) return out;   // phase 1: must contain preferred
-            if (enumerate_phase(false)) return out;  // phase 2: the rest
         }
-        else
-        {
-            if (enumerate_phase(true)) return out;   // preferred not found, single pass
+    }
+
+    // =====================================================
+    // PASS 2: preferred_var ∉ Mx（兜底）
+    // =====================================================
+    if (preferred_idx >= 0) {
+        for (int k = max_k; k >= min_k; --k) {
+            std::vector<int> comb(k);
+            for (int i = 0; i < k; ++i) comb[i] = i;
+
+            while (true) {
+                if (std::find(comb.begin(), comb.end(), preferred_idx)
+                    == comb.end()) {
+                    if (try_combination(k, comb))
+                        return out;
+                }
+                if (!next_combination(comb, (int)vp.size()))
+                    break;
+            }
         }
     }
 

@@ -17,6 +17,7 @@
 #include "../include/algorithms/66lut_bidec.hpp"
 #include "../include/algorithms/66lut_dsd.hpp"   // ★ 新增
 #include "../include/algorithms/stp_dsd.hpp"
+#include "../include/algorithms/66lut_else_dec.hpp"
 namespace alice
 {
 
@@ -156,8 +157,11 @@ protected:
         std::cout << "🔀 Mode: 66-LUT Bi-Decomposition (-b legacy)\n";
         success = run_strong_bi_dec_and_build_dag(root_shrunk);
 
-        auto t2 = clk::now();
-        auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        if (!success)
+        {
+            std::cout << "⚠️ Bi-Decomposition failed, trying DSD (-f -s) fallback...\n";
+            success = run_66lut_else_dec_and_build_dag(root_shrunk);
+        }
 
         if (!success)
         {
@@ -165,7 +169,9 @@ protected:
             return;
         }
 
-        std::cout << "⏱ time = " << us << " us\n";
+                auto end = clk::now();
+        auto final_us = std::chrono::duration_cast<std::chrono::microseconds>(end - t1).count();
+        std::cout << "⏱ time = " << final_us << " us\n";
     }
 
 private:
