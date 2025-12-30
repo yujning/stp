@@ -36,6 +36,10 @@ public:
 
         add_flag("-b, --bidec",
                  "force 66-LUT bi-decomposition (legacy -f behavior)");
+        
+        add_flag("--only",
+                 "run 66-LUT decomposition without strong DSD fallback");
+
     }
 
 protected:
@@ -126,7 +130,7 @@ protected:
 
         const bool only_dsd   = is_set("dsd");
         const bool only_bidec = is_set("bidec");
-
+        const bool only_lut66 = is_set("only");
         if (only_dsd && only_bidec)
         {
              std::cout << "❌ Options -d and -b cannot be used together.\n";
@@ -158,10 +162,16 @@ protected:
         std::cout << "🔀 Mode: 66-LUT Bi-Decomposition (-b legacy)\n";
         success = run_strong_bi_dec_and_build_dag(root_shrunk);
 
-        if (!success)
+        if (!success && !only_lut66)
         {
             std::cout << "⚠️ Bi-Decomposition failed, trying DSD (-f -s) fallback...\n";
             success = run_66lut_else_dec_and_build_dag(root_shrunk);
+        }
+
+        if (!success && only_lut66)
+        {
+            std::cout << "❌ Decomposition failed\n";
+            return;
         }
 
         if (!success)
