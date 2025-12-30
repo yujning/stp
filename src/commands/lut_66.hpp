@@ -18,6 +18,7 @@
 #include "../include/algorithms/66lut_dsd.hpp"   // ★ 新增
 #include "../include/algorithms/stp_dsd.hpp"
 #include "../include/algorithms/66lut_else_dec.hpp"
+
 namespace alice
 {
 

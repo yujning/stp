@@ -27,7 +27,7 @@
 
 #include "../include/algorithms/66lut_bidec.hpp"
 #include "../include/algorithms/66lut_dsd.hpp"
-
+#include "../include/algorithms/66lut_else_dec.hpp"
 
 namespace alice
 {
@@ -149,7 +149,8 @@ static bool run_lut66_for_resyn(const std::string& binary01, int nvars, int& roo
     bool success = run_66lut_dsd_and_build_dag(root_shrunk);
     if (!success)
         success = run_strong_bi_dec_and_build_dag(root_shrunk);
-
+    if (!success)
+        success = run_66lut_else_dec_and_build_dag(root_shrunk);
     if (success)
         root_id = NODE_LIST.empty() ? 0 : NODE_LIST.back().id;
 
