@@ -5,6 +5,7 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include <unordered_map>
 // 前向声明，避免循环依赖
 struct DSDNode;
 struct TT {
@@ -16,10 +17,13 @@ int new_in_node(int var_id);
 // C++17 允许 inline 全局变量，只需定义一次即可，全工程自动共享
 inline int NODE_ID = 1;
 inline int STEP_ID = 1;
+
 inline bool ENABLE_ELSE_DEC = false;
 
 inline int ORIGINAL_VAR_COUNT = 0;
+inline int NEXT_PLACEHOLDER_ID = 0;
 
+inline std::unordered_map<int, int> PLACEHOLDER_BINDINGS;
 inline std::vector<int> FINAL_VAR_ORDER;
 
 inline std::vector<DSDNode> NODE_LIST;
@@ -37,11 +41,39 @@ inline void RESET_NODE_GLOBAL()
     STEP_ID = 1;
     ENABLE_ELSE_DEC = false;
     ORIGINAL_VAR_COUNT = 0;
+    NEXT_PLACEHOLDER_ID = 0;
+    PLACEHOLDER_BINDINGS.clear();
 
     NODE_LIST.clear();
     FINAL_VAR_ORDER.clear();
 
     INPUT_NODE_CACHE.clear();
     NODE_HASH.clear();
+}
+
+
+inline int allocate_placeholder_var_id(const std::unordered_map<int, int>* existing)
+{
+    if (existing)
+    {
+        for (const auto& [var_id, _] : *existing)
+            NEXT_PLACEHOLDER_ID = std::max(NEXT_PLACEHOLDER_ID, var_id + 1);
+    }
+
+    if (NEXT_PLACEHOLDER_ID <= ORIGINAL_VAR_COUNT)
+        NEXT_PLACEHOLDER_ID = ORIGINAL_VAR_COUNT + 1;
+
+    return NEXT_PLACEHOLDER_ID++;
+}
+
+inline void register_placeholder_binding(int var_id, int node_id)
+{
+    PLACEHOLDER_BINDINGS[var_id] = node_id;
+}
+
+inline void register_placeholder_bindings(const std::unordered_map<int, int>& bindings)
+{
+    for (const auto& [var_id, node_id] : bindings)
+        PLACEHOLDER_BINDINGS[var_id] = node_id;
 }
 inline std::vector<int> make_children_from_order(const TT& t);

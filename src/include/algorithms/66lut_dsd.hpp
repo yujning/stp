@@ -326,6 +326,13 @@ inline std::vector<int> make_children_from_order_with_placeholder_66(
                 continue;
             }
         }
+
+          auto global_it = PLACEHOLDER_BINDINGS.find(var_id);
+        if (global_it != PLACEHOLDER_BINDINGS.end())
+        {
+            children.push_back(global_it->second);
+            continue;
+        }
         children.push_back(new_in_node(var_id));
     }
 
@@ -372,7 +379,7 @@ inline bool run_66lut_dsd_and_build_dag(const TT& root_tt)
 
  // ----- build MX node (MY placeholder + <=5 vars) -----
         int k = (int)res.mx_vars_msb2lsb.size();
-        int my_local_id = ORIGINAL_VAR_COUNT + 1;
+        int my_local_id = allocate_placeholder_var_id(nullptr);
 
 
         // 先把 MY 的变量做成一个集合，便于过滤
@@ -394,6 +401,7 @@ inline bool run_66lut_dsd_and_build_dag(const TT& root_tt)
 
         std::unordered_map<int, int> placeholder;
         placeholder[my_local_id] = my_node;
+          register_placeholder_bindings(placeholder);
 
         auto children_mx =
             make_children_from_order_with_placeholder_66(order_mx, &placeholder);

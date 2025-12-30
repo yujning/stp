@@ -40,7 +40,8 @@ inline int build_66lut_chain(
         return -1;
 
     // Build MX with MY placeholder at the MSB position
-    int placeholder_id = ORIGINAL_VAR_COUNT + 1;
+       int placeholder_id = allocate_placeholder_var_id(placeholder_nodes);
+
 
     std::unordered_set<int> my_var_set(
         res.my_vars_msb2lsb.begin(), res.my_vars_msb2lsb.end());
@@ -56,7 +57,7 @@ inline int build_66lut_chain(
     merged_placeholder[placeholder_id] = my_node;
     if (placeholder_nodes)
         merged_placeholder.insert(placeholder_nodes->begin(), placeholder_nodes->end());
-
+    register_placeholder_bindings(merged_placeholder);
     auto children_mx =
         make_children_from_order_with_placeholder_66(order_mx, &merged_placeholder);
     return new_node(res.Mx, children_mx);
@@ -89,7 +90,7 @@ inline bool run_66lut_else_dec_and_build_dag(const TT& root_tt)
         return false;
 
     // Prepare MX input order with MY as MSB placeholder
-    const int placeholder_id = ORIGINAL_VAR_COUNT + 1;
+       const int placeholder_id = allocate_placeholder_var_id(nullptr);
     std::unordered_set<int> my_var_set(
         split.my_vars_msb2lsb.begin(), split.my_vars_msb2lsb.end());
 
@@ -102,7 +103,7 @@ inline bool run_66lut_else_dec_and_build_dag(const TT& root_tt)
 
     std::unordered_map<int, int> placeholder;
     placeholder[placeholder_id] = my_node;
-
+        register_placeholder_bindings(placeholder);
     int root_node = -1;
     if ((int)order_mx.size() <= 6)
     {

@@ -376,6 +376,14 @@ make_children_from_order_with_placeholder(
             }
         }
 
+        
+        auto global_it = PLACEHOLDER_BINDINGS.find(var_id);
+        if (global_it != PLACEHOLDER_BINDINGS.end())
+        {
+            children.push_back(global_it->second);
+            continue;
+        }
+
         int global_var_id = var_id;
         if (local_to_global &&
             var_id >= 0 &&
