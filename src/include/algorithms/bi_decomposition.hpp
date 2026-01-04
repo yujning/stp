@@ -891,6 +891,29 @@ static int bi_decomp_recursive(const TT& f, int depth = 0)
     if (len <= 4)
         return build_small_tree(f);
 
+            // 如果开启 DSD 混合模式，优先尝试 DSD -m；失败时再回到 BD
+     // 如果开启 DSD 混合模式，优先尝试 DSD -m；失败时再回到 BD
+    if (BD_ENABLE_DSD_MIX_FALLBACK)
+    {
+        int max_var = 0;
+        for (int v : f.order)
+            max_var = std::max(max_var, v);
+
+        std::vector<int> local_to_global(max_var + 1, 0);
+        for (int v : f.order)
+            local_to_global[v] = v;
+
+        auto mix_try = dsd_factor_mix_impl(f, depth, &local_to_global, nullptr, false);
+        if (mix_try.decomposed)
+        {
+            std::cout << "✅ 深度 " << depth << "：DSD -m 成功，保持 DSD 分支\n";
+            return mix_try.node_id;
+        }
+
+        std::cout << "ℹ️ 深度 " << depth << "：DSD -m 未找到分解，回退到 BD\n";
+    
+    }
+
     // 尝试找到第一个双分解
     BiDecompResult result;
     bool found = find_first_bi_decomposition(f, result);
@@ -918,7 +941,8 @@ static int bi_decomp_recursive(const TT& f, int depth = 0)
                 local_to_global[v] = v;
 
 
-            return dsd_factor_mix_impl(f, depth, &local_to_global, nullptr);
+            auto mix = dsd_factor_mix_impl(f, depth, &local_to_global, nullptr, true);
+            return mix.node_id;
         }
 
 

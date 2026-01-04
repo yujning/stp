@@ -94,15 +94,26 @@ inline int build_small_tree_mix(
     return new_node(t.f01, child_ids);
 }
 
-inline int dsd_factor_mix_impl(
+struct DsdMixResult
+{
+    int node_id;
+    bool decomposed;  // true = 本层找到分解；false = 直接建小树
+};
+inline DsdMixResult dsd_factor_mix_impl(
     const TT& f,
     int depth,
     const std::vector<int>* local_to_global,
-    const std::unordered_map<int, int>* placeholder_nodes)
+    const std::unordered_map<int, int>* placeholder_nodes,
+    bool build_if_no_decomp = true)
 {
     int len = f.f01.size();
     if (len <= 4)
-        return build_small_tree_mix(f, local_to_global, placeholder_nodes);
+        {
+        if (!build_if_no_decomp)
+            return {-1, false};
+
+        return {build_small_tree_mix(f, local_to_global, placeholder_nodes), false};
+    }
 
     std::string MF12;
     TT phi_tt, psi_tt;
@@ -134,10 +145,12 @@ inline int dsd_factor_mix_impl(
             std::cout << "位置" << (i + 1) << "→变量" << psi_original_vars[i] << " ";
         std::cout << "\n\n";
 
-        int L = dsd_factor_mix_impl(phi_tt, depth + 1, local_to_global, placeholder_nodes);
-        int R = dsd_factor_mix_impl(psi_tt, depth + 1, local_to_global, placeholder_nodes);
+        auto L = dsd_factor_mix_impl(
+            phi_tt, depth + 1, local_to_global, placeholder_nodes, true);
+        auto R = dsd_factor_mix_impl(
+            psi_tt, depth + 1, local_to_global, placeholder_nodes, true);
 
-        return new_node(MF12, {L, R});
+        return {new_node(MF12, {L.node_id, R.node_id}), true};
     }
 
     std::cout << "⚠️ DSD -f failed at depth " << depth
@@ -145,7 +158,10 @@ inline int dsd_factor_mix_impl(
 
     StrongDsdSplit split = run_strong_dsd_by_mx_subset(f.f01, f.order, depth);
     if (!split.found) {
-        return build_small_tree_mix(f, local_to_global, placeholder_nodes);
+            if (!build_if_no_decomp)
+            return {-1, false};
+
+        return {build_small_tree_mix(f, local_to_global, placeholder_nodes), false};
     }
 
     const auto& result = split.dsd;
@@ -154,7 +170,8 @@ inline int dsd_factor_mix_impl(
     my_tt.f01 = result.My;
     my_tt.order = split.my_vars_msb2lsb;
 
-    int my_id = dsd_factor_mix_impl(my_tt, depth + 1, local_to_global, placeholder_nodes);
+    auto my = dsd_factor_mix_impl(
+        my_tt, depth + 1, local_to_global, placeholder_nodes, true);
 
     int k = (int)split.mx_vars_msb2lsb.size();
     int my_local_id = k + 1;
@@ -167,7 +184,7 @@ inline int dsd_factor_mix_impl(
     std::unordered_map<int, int> placeholder_nodes_mx;
     std::vector<int> local_to_global_mx(my_local_id + 1, 0);
 
-    placeholder_nodes_mx[my_local_id] = my_id;
+    placeholder_nodes_mx[my_local_id] = my.node_id;
 
     const std::unordered_map<int, int> empty_ph;
     const auto& parent_ph = placeholder_nodes ? *placeholder_nodes : empty_ph;
@@ -189,11 +206,14 @@ inline int dsd_factor_mix_impl(
     mx_tt.f01 = result.Mx;
     mx_tt.order = order_mx;
 
-    return dsd_factor_mix_impl(
+       auto rst = dsd_factor_mix_impl(
         mx_tt,
         depth + 1,
         &local_to_global_mx,
-        &placeholder_nodes_mx);
+        &placeholder_nodes_mx,
+        true);
+
+    return {rst.node_id, true};
 }
 
 inline int run_dsd_recursive_mix(const std::string& binary01)
@@ -229,7 +249,8 @@ inline int run_dsd_recursive_mix(const std::string& binary01)
         new_in_node(v);
 
     TT root_shrunk = shrink_to_support(root);
-    int root_id = dsd_factor_mix_impl(root_shrunk, 0, nullptr, nullptr);
+    auto root_mix = dsd_factor_mix_impl(root_shrunk, 0, nullptr, nullptr);
+    int root_id = root_mix.node_id;
 
     std::cout << "===== 最终 DSD 节点列表 =====\n";
     for (auto& nd : NODE_LIST)
