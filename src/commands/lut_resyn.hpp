@@ -106,7 +106,8 @@ static int run_strong_dsd_for_resyn(const std::string& binary01)
     return build_strong_dsd_nodes(root_shrunk.f01, root_shrunk.order, 0);
 }
 
-static bool run_lut66_for_resyn(const std::string& binary01, int nvars, int& root_id)
+static bool run_lut66_for_resyn(const std::string& binary01, int nvars, int& root_id,
+                                bool only_lut66)
 {
     TT root;
     root.f01 = binary01;
@@ -149,7 +150,7 @@ static bool run_lut66_for_resyn(const std::string& binary01, int nvars, int& roo
     bool success = run_66lut_dsd_and_build_dag(root_shrunk);
     if (!success)
         success = run_strong_bi_dec_and_build_dag(root_shrunk);
-    if (!success)
+    if (!success && !only_lut66)
         success = run_66lut_else_dec_and_build_dag(root_shrunk);
     if (success)
         root_id = NODE_LIST.empty() ? 0 : NODE_LIST.back().id;
@@ -186,6 +187,9 @@ public:
         
         add_flag("--lut66", use_lut66,
                  "per-LUT 66-LUT decomposition (same as `lut66 -f`)");
+
+        add_flag("--only", use_lut66_only,
+                 "run per-LUT 66-LUT decomposition without else-decomposition fallback");
     }
 
 protected:
@@ -222,6 +226,18 @@ protected:
                std::cout << "❌ --lut66 cannot be combined with other options (except -e)\n";
             return;
         }
+
+                if (use_lut66_only && !use_lut66)
+        {
+            std::cout << "❌ --only requires --lut66\n";
+            return;
+        }
+        if (use_lut66_only && use_else_dec)
+        {
+            std::cout << "❌ --only cannot be combined with -e (--else_dec)\n";
+            return;
+        }
+
 
         resyn_strategy strategy = resyn_strategy::bi_dec;
         if (!use_lut66)
@@ -353,7 +369,8 @@ if (lut.fanins.size() <= 2)
         {
             bool success = run_lut66_for_resyn(binary01,
                                         static_cast<int>(lut.fanins.size()),
-                                        root_id);
+                                        root_id,
+                                        use_lut66_only);
                         if (!success && use_else_dec)
             {
                 std::cout << "⚠️ 66-LUT decomposition failed for " << name
@@ -463,6 +480,7 @@ private:
     bool use_else_dec = false;
     bool use_dsd_mix_fallback = false;
     bool use_lut66 = false;
+    bool use_lut66_only = false;
 };
 
 ALICE_ADD_COMMAND(lut_resyn, "STP")
