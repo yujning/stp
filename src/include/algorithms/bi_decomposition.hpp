@@ -22,6 +22,7 @@ inline bool BD_ONLY_K2_EQ_0 = false;
 // When true, abort BD recursion on failure to enable external fallback (e.g., DSD -m).
 inline bool BD_ENABLE_DSD_MIX_FALLBACK = false;
 
+
 // =====================================================
 // BiDecompResult
 // =====================================================
@@ -904,13 +905,15 @@ static int bi_decomp_recursive(const TT& f, int depth = 0)
             local_to_global[v] = v;
 
         auto mix_try = dsd_factor_mix_impl(f, depth, &local_to_global, nullptr, false);
-        if (mix_try.decomposed)
+
+        if (mix_try.decomposed && mix_try.fully_success)
         {
-            std::cout << "✅ 深度 " << depth << "：DSD -m 成功，保持 DSD 分支\n";
+            std::cout << "✅ 深度 " << depth << "：DSD -m 完全成功，保持 DSD 分支\n";
             return mix_try.node_id;
         }
 
-        std::cout << "ℹ️ 深度 " << depth << "：DSD -m 未找到分解，回退到 BD\n";
+        std::cout << "ℹ️ 深度 " << depth << "：DSD -m 未完全成功，回退到 BD\n";
+
     
     }
 
@@ -942,7 +945,16 @@ static int bi_decomp_recursive(const TT& f, int depth = 0)
 
 
             auto mix = dsd_factor_mix_impl(f, depth, &local_to_global, nullptr, true);
-            return mix.node_id;
+
+            if (mix.fully_success && mix.node_id >= 0)
+            {
+                std::cout << "✅ 深度 " << depth << "：DSD -m fallback 完全成功\n";
+                return mix.node_id;
+            }
+
+            std::cout << "⚠️ 深度 " << depth << "：DSD -m fallback 失败，继续 else_dec / build_small_tree\n";
+            // 不 return，继续走后面的 else_dec / build_small_tree
+
         }
 
 

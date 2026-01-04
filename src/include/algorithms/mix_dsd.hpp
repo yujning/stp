@@ -97,7 +97,8 @@ inline int build_small_tree_mix(
 struct DsdMixResult
 {
     int node_id;
-    bool decomposed;  // true = 本层找到分解；false = 直接建小树
+    bool decomposed;       // 本层是否做了分解（拆出了 MF12 或 strong DSD）
+    bool fully_success;    // ★ 递归子树是否全部成功（可用于 BD 回退判定）
 };
 inline DsdMixResult dsd_factor_mix_impl(
     const TT& f,
@@ -106,99 +107,109 @@ inline DsdMixResult dsd_factor_mix_impl(
     const std::unordered_map<int, int>* placeholder_nodes,
     bool build_if_no_decomp = true)
 {
-    int len = f.f01.size();
-    if (len <= 4)
-        {
-        if (!build_if_no_decomp)
-            return {-1, false};
+    int len = (int)f.f01.size();
 
-        return {build_small_tree_mix(f, local_to_global, placeholder_nodes), false};
+    // -------- Base case: len <= 4 --------
+    if (len <= 4)
+    {
+        if (!build_if_no_decomp)
+        {
+            // ★ 关键：不允许建树时，明确失败
+            return {-1, false, false};
+        }
+
+        // 允许建树：对 DSD 来说这不算“分解成功”，但这层是“可完成”的
+        int nid = build_small_tree_mix(f, local_to_global, placeholder_nodes);
+        return {nid, false, true};
     }
 
+    // -------- 1) Try normal DSD --------
     std::string MF12;
     TT phi_tt, psi_tt;
 
-    if (factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt)) {
-        std::vector<int> phi_original_vars = phi_tt.order;
-        std::vector<int> psi_original_vars = psi_tt.order;
+    if (factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt))
+    {
+        // 递归分解左右子树（这里必须“严格”，不让子树偷偷建树）
+        auto L = dsd_factor_mix_impl(phi_tt, depth + 1, local_to_global, placeholder_nodes, false);
+        auto R = dsd_factor_mix_impl(psi_tt, depth + 1, local_to_global, placeholder_nodes, false);
 
-        int n_phi = phi_tt.order.size();
-        int n_psi = psi_tt.order.size();
+        if (!L.fully_success || !R.fully_success || L.node_id < 0 || R.node_id < 0)
+        {
+            // ★ 关键：子树不完整 => 整个 DSD 分解失败，向上传播
+            return {-1, true, false};
+        }
 
-        std::cout << "📌 递归分解 Φ：原始变量 { ";
-        for (int v : phi_original_vars) std::cout << v << " ";
-        std::cout << "} → 局部编号 { ";
-        for (int i = 1; i <= n_phi; i++) std::cout << i << " ";
-        std::cout << "}\n";
-        std::cout << "   映射关系：";
-        for (int i = 0; i < n_phi; i++)
-            std::cout << "位置" << (i + 1) << "→变量" << phi_original_vars[i] << " ";
-        std::cout << "\n";
-
-        std::cout << "📌 递归分解 Ψ：原始变量 { ";
-        for (int v : psi_original_vars) std::cout << v << " ";
-        std::cout << "} → 局部编号 { ";
-        for (int i = 1; i <= n_psi; i++) std::cout << i << " ";
-        std::cout << "}\n";
-        std::cout << "   映射关系：";
-        for (int i = 0; i < n_psi; i++)
-            std::cout << "位置" << (i + 1) << "→变量" << psi_original_vars[i] << " ";
-        std::cout << "\n\n";
-
-        auto L = dsd_factor_mix_impl(
-            phi_tt, depth + 1, local_to_global, placeholder_nodes, true);
-        auto R = dsd_factor_mix_impl(
-            psi_tt, depth + 1, local_to_global, placeholder_nodes, true);
-
-        return {new_node(MF12, {L.node_id, R.node_id}), true};
+        // 本层分解 + 子树完整 => 成功
+        return {new_node(MF12, {L.node_id, R.node_id}), true, true};
     }
 
+    // -------- 2) Try strong DSD (one layer) --------
     std::cout << "⚠️ DSD -f failed at depth " << depth
               << ", fallback to strong DSD (one layer).\n";
 
     StrongDsdSplit split = run_strong_dsd_by_mx_subset(f.f01, f.order, depth);
-    if (!split.found) {
-            if (!build_if_no_decomp)
-            return {-1, false};
+    if (!split.found)
+    {
+        if (!build_if_no_decomp)
+        {
+            // ★ 不允许建树时，明确失败（让 BD 回退）
+            return {-1, false, false};
+        }
 
-        return {build_small_tree_mix(f, local_to_global, placeholder_nodes), false};
+        // 允许建树：这不是分解，但作为“完成”返回 fully_success=true
+        int nid = build_small_tree_mix(f, local_to_global, placeholder_nodes);
+        return {nid, false, true};
     }
 
+    // strong DSD 找到 split：需要先递归 my，再把 my 当 placeholder 融入 mx
     const auto& result = split.dsd;
 
+    // ---- build my ----
     TT my_tt;
     my_tt.f01 = result.My;
     my_tt.order = split.my_vars_msb2lsb;
 
-    auto my = dsd_factor_mix_impl(
-        my_tt, depth + 1, local_to_global, placeholder_nodes, true);
+    // ★ my 子树必须严格成功（不允许它自己建树）
+    auto my = dsd_factor_mix_impl(my_tt, depth + 1, local_to_global, placeholder_nodes, false);
+    if (!my.fully_success || my.node_id < 0)
+    {
+        return {-1, true, false};
+    }
 
     int k = (int)split.mx_vars_msb2lsb.size();
     int my_local_id = k + 1;
 
+    // mx 的局部 order：{my_local_id, k..1}
     std::vector<int> order_mx;
     order_mx.reserve(k + 1);
     order_mx.push_back(my_local_id);
     for (int i = k; i >= 1; --i) order_mx.push_back(i);
 
+    // placeholder / mapping
     std::unordered_map<int, int> placeholder_nodes_mx;
     std::vector<int> local_to_global_mx(my_local_id + 1, 0);
 
+    // 把 my 挂到占位节点
     placeholder_nodes_mx[my_local_id] = my.node_id;
 
+    // 父占位表（如果有）
     const std::unordered_map<int, int> empty_ph;
     const auto& parent_ph = placeholder_nodes ? *placeholder_nodes : empty_ph;
 
-    for (int i = 0; i < k; ++i) {
+    // mx vars: 映射到新的局部编号
+    for (int i = 0; i < k; ++i)
+    {
         int old_id = split.mx_vars_msb2lsb[i];
         int new_id = k - i;
 
         auto it = parent_ph.find(old_id);
-        if (it != parent_ph.end()) {
+        if (it != parent_ph.end())
+        {
             placeholder_nodes_mx[new_id] = it->second;
-        } else {
-            local_to_global_mx[new_id] =
-                resolve_global_var_id(old_id, local_to_global);
+        }
+        else
+        {
+            local_to_global_mx[new_id] = resolve_global_var_id(old_id, local_to_global);
         }
     }
 
@@ -206,14 +217,15 @@ inline DsdMixResult dsd_factor_mix_impl(
     mx_tt.f01 = result.Mx;
     mx_tt.order = order_mx;
 
-       auto rst = dsd_factor_mix_impl(
-        mx_tt,
-        depth + 1,
-        &local_to_global_mx,
-        &placeholder_nodes_mx,
-        true);
+    // ★ mx 子树也必须严格成功（不允许它自己建树）
+    auto mx = dsd_factor_mix_impl(mx_tt, depth + 1, &local_to_global_mx, &placeholder_nodes_mx, false);
+    if (!mx.fully_success || mx.node_id < 0)
+    {
+        return {-1, true, false};
+    }
 
-    return {rst.node_id, true};
+    // strong DSD 本层成功（my + mx 都成功）
+    return {mx.node_id, true, true};
 }
 
 inline int run_dsd_recursive_mix(const std::string& binary01)
