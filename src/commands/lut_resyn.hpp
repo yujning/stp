@@ -178,7 +178,7 @@ public:
         add_flag("-m,--mix", use_mix_dsd,
                  "use mixed DSD (requires -d)");
         add_flag("-e,--else_dec", use_else_dec,
-                 "exact synthesis + Shannon fallback (DSD)");
+                   "exact synthesis + Shannon fallback (DSD / --lut66 fallback)");
         
         add_flag("--dm,--dsd_mix", use_dsd_mix_fallback,
                  "mixed DSD (-m) fallback when BD cannot proceed (-b)");
@@ -217,9 +217,9 @@ protected:
         }
 
         /*---------------- option check ----------------*/
-        if (use_lut66 && (use_bi_dec || use_dsd || use_strong_dsd || use_mix_dsd|| use_else_dec || use_dsd_mix_fallback))
+           if (use_lut66 && (use_bi_dec || use_dsd || use_strong_dsd || use_mix_dsd || use_dsd_mix_fallback))
         {
-             std::cout << "❌ --lut66 cannot be combined with other options\n";
+               std::cout << "❌ --lut66 cannot be combined with other options (except -e)\n";
             return;
         }
 
@@ -354,6 +354,15 @@ if (lut.fanins.size() <= 2)
             bool success = run_lut66_for_resyn(binary01,
                                         static_cast<int>(lut.fanins.size()),
                                         root_id);
+                        if (!success && use_else_dec)
+            {
+                std::cout << "⚠️ 66-LUT decomposition failed for " << name
+                          << ", fallback to bi-decomposition (-e --dm)\n";
+
+                root_id = run_bi_decomp_for_resyn(binary01, true, true);
+                success = true;
+            }
+
             if (!success)
             {
                 std::cout << "⚠️ 66-LUT decomposition failed for " << name
