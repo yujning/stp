@@ -895,26 +895,36 @@ static int bi_decomp_recursive(const TT& f, int depth = 0)
     BiDecompResult result;
     bool found = find_first_bi_decomposition(f, result);
 
-if (!found)
-{
-    if (BD_ENABLE_DSD_MIX_FALLBACK)
+    if (!found)
     {
-        std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 触发 DSD -m 回退\n";
-        int max_var = 0;
-        for (int v : f.order)
-            max_var = std::max(max_var, v);
+        if (ENABLE_ELSE_DEC)
+        {
+            std::cout << "⚠️ 深度 " << depth
+                      << "：无法双分解 → 触发 else_dec 回退 (n=" << nv << ")\n";
 
-        std::vector<int> local_to_global(max_var + 1, 0);
-        for (int v : f.order)
-            local_to_global[v] = v;
+            auto orig_children = make_children_from_order(f);
+            return else_decompose(f, orig_children, depth);
+        }
 
-        return dsd_factor_mix_impl(f, depth, &local_to_global, nullptr);
+        if (BD_ENABLE_DSD_MIX_FALLBACK)
+        {
+            std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 触发 DSD -m 回退\n";
+            int max_var = 0;
+            for (int v : f.order)
+                max_var = std::max(max_var, v);
+
+            std::vector<int> local_to_global(max_var + 1, 0);
+            for (int v : f.order)
+                local_to_global[v] = v;
+
+
+            return dsd_factor_mix_impl(f, depth, &local_to_global, nullptr);
+        }
+
+
+        std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 直接建树\n";
+        return build_small_tree(f);
     }
-
-
-  std::cout << "⚠️ 深度 " << depth << "：无法双分解 → 直接建树\n";
-  return build_small_tree(f);
-}
 
 
 
