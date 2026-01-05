@@ -93,7 +93,7 @@ protected:
     std::cout << "🔀 Mode: single 6-LUT (no decomposition needed)\n";
 
     RESET_NODE_GLOBAL();
-    ORIGINAL_VAR_COUNT = static_cast<int>(shrunk_vars);
+    ORIGINAL_VAR_COUNT = static_cast<int>(nvars);
 
     std::vector<int> sorted_vars = root_shrunk.order;
     std::sort(sorted_vars.begin(), sorted_vars.end());
