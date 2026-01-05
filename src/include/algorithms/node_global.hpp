@@ -54,14 +54,21 @@ inline void RESET_NODE_GLOBAL()
 
 inline int allocate_placeholder_var_id(const std::unordered_map<int, int>* existing)
 {
+    int max_var_id = ORIGINAL_VAR_COUNT;
     if (existing)
     {
         for (const auto& [var_id, _] : *existing)
-            NEXT_PLACEHOLDER_ID = std::max(NEXT_PLACEHOLDER_ID, var_id + 1);
+            max_var_id = std::max(max_var_id, var_id);
     }
 
-    if (NEXT_PLACEHOLDER_ID <= ORIGINAL_VAR_COUNT)
-        NEXT_PLACEHOLDER_ID = ORIGINAL_VAR_COUNT + 1;
+    for (int var_id : FINAL_VAR_ORDER)
+        max_var_id = std::max(max_var_id, var_id);
+
+    for (const auto& [var_id, _] : PLACEHOLDER_BINDINGS)
+        max_var_id = std::max(max_var_id, var_id);
+
+    if (NEXT_PLACEHOLDER_ID <= max_var_id)
+        NEXT_PLACEHOLDER_ID = max_var_id + 1;
 
     return NEXT_PLACEHOLDER_ID++;
 }

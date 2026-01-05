@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
-
+#include <unordered_set>
 #include "node_global.hpp"
 
 // =====================================================
@@ -349,7 +349,10 @@ inline bool run_66lut_dsd_and_build_dag(const TT& root_tt)
     if ((size_t(1) << n) != root_tt.f01.size()) return false;
 
     RESET_NODE_GLOBAL();
-    ORIGINAL_VAR_COUNT = n;
+    int max_var_id = root_tt.order.empty() ? 0
+                                           : *std::max_element(root_tt.order.begin(),
+                                                               root_tt.order.end());
+    ORIGINAL_VAR_COUNT = max_var_id;
     auto res = run_66lut_dsd_by_mx_subset(root_tt.f01, root_tt.order,
                                           /*depth_for_print=*/0);
     if (!res.found) {
@@ -388,16 +391,21 @@ inline bool run_66lut_dsd_and_build_dag(const TT& root_tt)
             res.my_vars_msb2lsb.end()
         );
 
-        // MX 的输入顺序：MY 在 MSB，其后是“非 MY 的原变量”
-        std::vector<int> order_mx;
-        order_mx.push_back(my_local_id);
+            // MX 的输入顺序：MY 在 MSB，其后是“非 MY 的原变量”；同时去重，防止占位符重复出现
+            std::vector<int> order_mx;
+            order_mx.reserve(1 + res.mx_vars_msb2lsb.size());
 
-        for (int v : res.mx_vars_msb2lsb)
-        {
-            // ★ 关键：排除属于 MY 的变量
-            if (my_var_set.count(v) == 0)
-                order_mx.push_back(v);
-        }
+            std::unordered_set<int> seen_vars;
+            order_mx.push_back(my_local_id);
+            seen_vars.insert(my_local_id);
+
+            for (int v : res.mx_vars_msb2lsb)
+            {
+                // ★ 关键：排除属于 MY 的变量；如果 MX 列表里出现重复，也要跳过
+                if (my_var_set.count(v) == 0 && seen_vars.insert(v).second)
+                    order_mx.push_back(v);
+            }
+        
 
         std::unordered_map<int, int> placeholder;
         placeholder[my_local_id] = my_node;

@@ -117,11 +117,14 @@ static bool run_lut66_for_resyn(const std::string& binary01, int nvars, int& roo
 
     TT root_shrunk = shrink_to_support(root);
     const unsigned shrunk_vars = static_cast<unsigned>(root_shrunk.order.size());
-
+    const int max_var_id = root_shrunk.order.empty()
+                               ? 0
+                               : *std::max_element(root_shrunk.order.begin(),
+                                                   root_shrunk.order.end());
     if (shrunk_vars <= 6)
     {
         RESET_NODE_GLOBAL();
-        ORIGINAL_VAR_COUNT = static_cast<int>(shrunk_vars);
+        ORIGINAL_VAR_COUNT = max_var_id;
 
         std::vector<int> sorted_vars = root_shrunk.order;
         std::sort(sorted_vars.begin(), sorted_vars.end());

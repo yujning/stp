@@ -316,6 +316,11 @@ inline std::vector<int> make_children_with_placeholder(
 inline bool run_strong_bi_dec_and_build_dag(const TT& root_tt)
 {
     int n = (int)root_tt.order.size();
+
+    int max_var_id = 0;
+    for (int v : root_tt.order)
+    max_var_id = std::max(max_var_id, v);
+
     if ((size_t(1) << n) != root_tt.f01.size()) return false;
 
     // 原始 TT 变量顺序（MSB->LSB）
@@ -362,7 +367,8 @@ inline bool run_strong_bi_dec_and_build_dag(const TT& root_tt)
             std::cout<<"🟥 MX = "<<MX<<"\n";
 
             // ===== 构造 DAG =====
-            ORIGINAL_VAR_COUNT = n;
+            ORIGINAL_VAR_COUNT = max_var_id;
+
 
             TT tt_my;
             tt_my.f01 = MY;
@@ -373,7 +379,8 @@ inline bool run_strong_bi_dec_and_build_dag(const TT& root_tt)
             std::reverse(children_my.begin(), children_my.end());
             int my_node = new_node(MY, children_my);
 
-            int placeholder_var_id = n + 1;
+            int placeholder_var_id = max_var_id + 1;
+
             std::vector<int> order_mx;
             order_mx.push_back(placeholder_var_id);
             order_mx.insert(order_mx.end(), B.begin(), B.end());
