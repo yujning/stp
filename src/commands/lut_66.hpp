@@ -46,6 +46,32 @@ public:
     }
 
 protected:
+        static void build_truth_table_as_single_lut(const TT& tt, unsigned nvars)
+        {
+            RESET_NODE_GLOBAL();
+            ORIGINAL_VAR_COUNT = static_cast<int>(nvars);
+
+            std::vector<int> sorted_vars = tt.order;
+            std::sort(sorted_vars.begin(), sorted_vars.end());
+            sorted_vars.erase(std::unique(sorted_vars.begin(), sorted_vars.end()), sorted_vars.end());
+            for (int var_id : sorted_vars)
+                new_in_node(var_id);
+
+            for (int var_id : tt.order)
+            {
+                if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
+                    FINAL_VAR_ORDER.push_back(var_id);
+            }
+
+            std::vector<int> children;
+            children.reserve(tt.order.size());
+
+            // Preserve the variable order; write_bench will reverse the child list.
+            for (int var_id : tt.order)
+                children.push_back(new_in_node(var_id));
+
+            new_node(tt.f01, children);
+        }
     void execute() override
     {
         using clk = std::chrono::high_resolution_clock;
@@ -91,40 +117,15 @@ protected:
 
         auto t1 = clk::now();
 
- if (shrunk_vars <= 6)
-{
-    std::cout << "🔀 Mode: single 6-LUT (no decomposition needed)\n";
+        if (shrunk_vars <= 6)
+        {
+            std::cout << "🔀 Mode: single 6-LUT (no decomposition needed)\n";
 
-    RESET_NODE_GLOBAL();
-    ORIGINAL_VAR_COUNT = static_cast<int>(nvars);
+            build_truth_table_as_single_lut(root_shrunk, nvars);
 
-    std::vector<int> sorted_vars = root_shrunk.order;
-    std::sort(sorted_vars.begin(), sorted_vars.end());
-    sorted_vars.erase(std::unique(sorted_vars.begin(), sorted_vars.end()), sorted_vars.end());
-    for (int var_id : sorted_vars)
-        new_in_node(var_id);
-
-    for (int var_id : root_shrunk.order)
-    {
-        if (std::find(FINAL_VAR_ORDER.begin(), FINAL_VAR_ORDER.end(), var_id) == FINAL_VAR_ORDER.end())
-            FINAL_VAR_ORDER.push_back(var_id);
-    }
-
-    std::vector<int> children;
-    children.reserve(root_shrunk.order.size());
-
-    // Preserve the shrunk variable order when emitting the single 6-LUT.
-    // write_bench() will reverse the child list again, so we keep the
-    // original order here (MSB->LSB) to ensure the final BENCH matches
-    // the printed variable mapping.
-    for (int var_id : root_shrunk.order)
-        children.push_back(new_in_node(var_id));
-
-    new_node(root_shrunk.f01, children);
-
-    auto t2 = clk::now();
-    auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-    std::cout << "⏱ time = " << us << " us\n";
+            auto t2 = clk::now();
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+            std::cout << "⏱ time = " << us << " us\n";
             return;
         }
 
@@ -157,8 +158,10 @@ protected:
 
                 if (!success)
                 {
-                    std::cout << "❌ Decomposition failed\n";
+                    std::cout << "⚠️ Decomposition failed, outputting original truth table\n";
+                    build_truth_table_as_single_lut(root, nvars);
                     return;
+
                 }
 
                 std::cout << "⏱ time = " << us << " us\n";
@@ -179,7 +182,8 @@ protected:
 
            if (!success && (only_lut66 || only_bidec))
         {
-            std::cout << "❌ Decomposition failed\n";
+            std::cout << "⚠️ Decomposition failed, outputting original truth table\n";
+            build_truth_table_as_single_lut(root, nvars);
             return;
         }
 
