@@ -35,7 +35,10 @@ public:
                         "only run 66-LUT Strong DSD (disjoint detection)");
 
         add_flag("-b, --bidec",
-                 "force 66-LUT bi-decomposition (legacy -f behavior)");
+                  "force 66-LUT bi-decomposition (no else-dec fallback)");
+
+        add_flag("-e, --else-dec",
+                 "use legacy bi-decomposition flow with else-dec fallback");
         
         add_flag("--only",
                  "run 66-LUT decomposition without strong DSD fallback");
@@ -130,13 +133,19 @@ protected:
 
         const bool only_dsd   = is_set("dsd");
         const bool only_bidec = is_set("bidec");
+        const bool use_else_dec = is_set("else-dec");
         const bool only_lut66 = is_set("only");
-        if (only_dsd && only_bidec)
+        if (only_dsd && (only_bidec || use_else_dec))
         {
-             std::cout << "❌ Options -d and -b cannot be used together.\n";
+             std::cout << "❌ Option -d cannot be used together with -b or -e.\n";
             return;
         }
-        if (only_dsd || !only_bidec)
+        if (only_bidec && use_else_dec)
+        {
+              std::cout << "❌ Options -b and -e cannot be used together.\n";
+            return;
+        }
+         if (only_dsd || (!only_bidec && !use_else_dec))
         {
             std::cout << "🔀 Mode: 66-LUT Strong DSD (disjoint detection)\n";
             success = run_66lut_dsd_and_build_dag(root_shrunk);
@@ -159,16 +168,16 @@ protected:
             std::cout << "⚠️ DSD failed, falling back to 66-LUT bi-decomposition...\n";
         }
 
-        std::cout << "🔀 Mode: 66-LUT Bi-Decomposition (-b legacy)\n";
+        std::cout << "🔀 Mode: 66-LUT Bi-Decomposition\n";
         success = run_strong_bi_dec_and_build_dag(root_shrunk);
 
-        if (!success && !only_lut66)
+        if (!success && use_else_dec && !only_lut66)
         {
             std::cout << "⚠️ Bi-Decomposition failed, trying DSD (-f -s) fallback...\n";
             success = run_66lut_else_dec_and_build_dag(root_shrunk);
         }
 
-        if (!success && only_lut66)
+           if (!success && (only_lut66 || only_bidec))
         {
             std::cout << "❌ Decomposition failed\n";
             return;
