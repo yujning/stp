@@ -414,7 +414,8 @@ inline bool run_66lut_dsd_and_build_dag(const TT& root_tt)
         auto children_mx =
             make_children_from_order_with_placeholder_66(order_mx, &placeholder);
 
-        new_node(res.Mx, children_mx);
+        int root_id = new_node(res.Mx, children_mx);
+        ROOT_NODE_ID = root_id;
 
     }
 

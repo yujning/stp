@@ -6,6 +6,7 @@
 #include <tuple>
 #include <vector>
 #include <unordered_map>
+
 // 前向声明，避免循环依赖
 struct DSDNode;
 struct TT {
@@ -22,7 +23,7 @@ inline bool ENABLE_ELSE_DEC = false;
 
 inline int ORIGINAL_VAR_COUNT = 0;
 inline int NEXT_PLACEHOLDER_ID = 0;
-
+inline int ROOT_NODE_ID = 0;
 inline std::unordered_map<int, int> PLACEHOLDER_BINDINGS;
 inline std::vector<int> FINAL_VAR_ORDER;
 
@@ -42,6 +43,7 @@ inline void RESET_NODE_GLOBAL()
     ENABLE_ELSE_DEC = false;
     ORIGINAL_VAR_COUNT = 0;
     NEXT_PLACEHOLDER_ID = 0;
+    ROOT_NODE_ID = 0;
     PLACEHOLDER_BINDINGS.clear();
 
     NODE_LIST.clear();

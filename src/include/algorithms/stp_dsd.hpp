@@ -914,7 +914,7 @@ inline int run_dsd_recursive(const std::string& binary01, bool enable_else_dec)
         std::cout << "\n";
     }
     // ================= 修改结束 =================
-
+    ROOT_NODE_ID = root_id;
     std::cout << "Root = " << root_id << "\n";
 
     std::cout << "FINAL_VAR_ORDER = { ";

@@ -539,5 +539,7 @@ inline int build_strong_dsd_nodes(
     const std::vector<int>& order,
     int depth = 0)
 {
-    return build_strong_dsd_nodes_impl(mf, order, depth, nullptr, nullptr);
+    int root_id = build_strong_dsd_nodes_impl(mf, order, depth, nullptr, nullptr);
+    ROOT_NODE_ID = root_id;
+    return root_id;
 }

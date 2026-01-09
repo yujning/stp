@@ -14,7 +14,7 @@
 extern std::vector<DSDNode> NODE_LIST;
 extern inline std::vector<int> FINAL_VAR_ORDER;
 extern inline int ORIGINAL_VAR_COUNT;
-
+extern inline int ROOT_NODE_ID;
 namespace alice
 {
 
@@ -109,7 +109,7 @@ protected:
                 name_of[n.id] = "new_n" + std::to_string(n.id);
         }
 
-        int root_id = NODE_LIST.back().id;
+        int root_id = ROOT_NODE_ID != 0 ? ROOT_NODE_ID : NODE_LIST.back().id;
         name_of[root_id] = "F0";
 
         // ====================================================

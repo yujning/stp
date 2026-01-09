@@ -112,13 +112,7 @@ inline DsdMixResult dsd_factor_mix_impl(
     // -------- Base case: len <= 4 --------
     if (len <= 4)
     {
-        if (!build_if_no_decomp)
-        {
-            // ★ 关键：不允许建树时，明确失败
-            return {-1, false, false};
-        }
 
-        // 允许建树：对 DSD 来说这不算“分解成功”，但这层是“可完成”的
         int nid = build_small_tree_mix(f, local_to_global, placeholder_nodes);
         return {nid, false, true};
     }
@@ -184,25 +178,17 @@ TT my_tt;
 my_tt.f01   = result.My;
 my_tt.order = split.my_vars_msb2lsb;
 
-// ★ my 必须先「严格尝试」
+// ★ 强 DSD 命中后，总是把 my 建出来（允许叶子/小树）
 auto my = dsd_factor_mix_impl(
     my_tt, depth + 1,
     local_to_global,
     placeholder_nodes,
-    /*build_if_no_decomp=*/false
+    /*build_if_no_decomp=*/true
 );
 
 int my_node_id = my.node_id;
-
-if (!my.fully_success || my_node_id < 0)
+if (my_node_id < 0)
 {
-    if (!build_if_no_decomp)
-    {
-        // 严格模式：本层 strong DSD 失败
-        return {-1, true, false};
-    }
-
-    // 非严格：兜底把 my 建出来
     my_node_id = build_small_tree_mix(
         my_tt, local_to_global, placeholder_nodes
     );
@@ -253,23 +239,16 @@ TT mx_tt;
 mx_tt.f01   = result.Mx;
 mx_tt.order = order_mx;
 
-// ★ mx 也必须先严格尝试
+// ★ strong DSD 命中后，总是把 mx 建出来（允许叶子/小树）
 auto mx = dsd_factor_mix_impl(
     mx_tt, depth + 1,
     &local_to_global_mx,
     &placeholder_nodes_mx,
-    /*build_if_no_decomp=*/false
+    /*build_if_no_decomp=*/true
 );
 
-if (!mx.fully_success || mx.node_id < 0)
+if (mx.node_id < 0)
 {
-    if (!build_if_no_decomp)
-    {
-        // 严格模式：本层 strong DSD 失败
-        return {-1, true, false};
-    }
-
-    // 非严格：兜底完成 mx
     int mx_node_id = build_small_tree_mix(
         mx_tt, &local_to_global_mx, &placeholder_nodes_mx
     );
@@ -278,6 +257,7 @@ if (!mx.fully_success || mx.node_id < 0)
 }
 
 // ---------- strong DSD 本层完全成功 ----------
+
 return {mx.node_id, true, true};
 
 }
@@ -345,7 +325,7 @@ inline int run_dsd_recursive_mix(const std::string& binary01)
 
         std::cout << "\n";
     }
-
+    ROOT_NODE_ID = root_id;
     std::cout << "Root = " << root_id << "\n";
 
     std::cout << "FINAL_VAR_ORDER = { ";
