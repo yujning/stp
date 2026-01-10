@@ -463,13 +463,26 @@ inline int build_strong_dsd_nodes_impl(
         std::cout << indent
                   << "⚠️ Strong: force EXACT 2-LUT refine (n=" << n << ")\n";
 
-        TT cur;
-        cur.f01   = mf;
-        cur.order = order;
+        int pivot_node = -1;
+                if (!order.empty())
+                {
+                    auto children = make_children_from_order_with_placeholder(
+                        order, placeholder_nodes, local_to_global);
+                    if (!children.empty())
+                        pivot_node = children.front();
+                }
 
-        // dsd_else_decompose 内部对 n<=4 会走 exact 2-LUT
+       
         // 并返回由 2-LUT 组成的网络（不会产生 3-input 节点）
-        return dsd_else_decompose(cur, depth);
+       // strong_else_decompose 在 n<=4 时走 placeholder-aware exact 2-LUT
+        return strong_else_decompose(
+            mf,
+            order,
+            depth,
+            pivot_node,
+            local_to_global,
+            placeholder_nodes,
+            build_strong_dsd_nodes_impl);
     }
 
     // =========================================================
