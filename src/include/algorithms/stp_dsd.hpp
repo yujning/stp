@@ -24,6 +24,67 @@ struct DSDNode {
     vector<int> child;
     int var_id = -1;  // 对于 "in" 节点：原始变量编号（1-based）
 };
+static inline bool is_prime_node(int id)
+{
+    if (id <= 0 || id >= (int)NODE_LIST.size()) return false;
+    const auto& nd = NODE_LIST[id];
+    if (nd.func == "in" || nd.func == "0" || nd.func == "1") return false;
+    return nd.child.size() > 2;
+}
+static void replace_node_everywhere(int old_id, int new_id)
+{
+    if (old_id == new_id) return;
+
+    for (auto& nd : NODE_LIST)
+        for (auto& c : nd.child)
+            if (c == old_id) c = new_id;
+
+    if (ROOT_NODE_ID == old_id)
+        ROOT_NODE_ID = new_id;
+}
+static int refine_prime_node(int node_id)
+{
+    const auto& nd = NODE_LIST[node_id];
+    int n = log2(nd.func.size());
+
+    TT t;
+    t.f01 = nd.func;
+
+    // child → order（只用于 Shannon / Exact）
+    t.order.clear();
+    for (int c : nd.child)
+    {
+        if (NODE_LIST[c].func == "in")
+            t.order.push_back(NODE_LIST[c].var_id);
+        else
+            t.order.push_back(-1);
+    }
+
+    return dsd_else_decompose(t, /*depth=*/0);
+}
+static void refine_all_prime_nodes()
+{
+    vector<int> primes;
+
+    for (auto& nd : NODE_LIST)
+        if (is_prime_node(nd.id))
+            primes.push_back(nd.id);
+
+    if (primes.empty())
+    {
+        cout << "✅ no prime nodes to refine\n";
+        return;
+    }
+
+    cout << "🔧 refining " << primes.size() << " prime nodes\n";
+
+    for (int pid : primes)
+    {
+        if (!is_prime_node(pid)) continue;
+        int new_root = refine_prime_node(pid);
+        replace_node_everywhere(pid, new_root);
+    }
+}
 
 inline bool is_terminal_tt(const TT& t)
 {
@@ -751,78 +812,31 @@ static bool factor_once_with_reorder_01(
 
 // dsd_factor - 递归 DSD 分解
 // =====================================================
-static int dsd_factor(const TT& f, int depth=0)
+static int dsd_factor(const TT& f, int depth = 0)
 {
-// 常量：真正的终点
-if (is_binary_constant(f.f01))
-    return build_small_tree(f);
+    // =========================
+    // 0) 常量
+    // =========================
+    if (is_binary_constant(f.f01))
+        return build_small_tree(f);
 
-// 1~2 变量：终点
-if (f.order.size() <= 2)
-    return build_small_tree(f);
+    // =========================
+    // 1) 1~2 输入：终点
+    // =========================
+    if (f.order.size() <= 2)
+        return build_small_tree(f);
 
-// ⚠️ 不要在这里因为 len<=4 停下来
-
-
-    string MF12;
+    // =========================
+    // 2) 尝试 DSD
+    // =========================
+    std::string MF12;
     TT phi_tt, psi_tt;
 
-if (!factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt))
-{
-    const int n = static_cast<int>(std::log2(f.f01.size()));
-
-    if (ENABLE_ELSE_DEC)
+    if (factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt))
     {
-        // ① 先尝试 Shannon（只在 n>4 真正起作用）
-        int sh = dsd_else_decompose(f, depth);
-        if (sh != -1)
-            return sh;
-
-        // ② 走到这里说明：n<=4，DSD + Shannon 都不行
-        std::cout << "⚠️ depth " << depth
-                  << ": DSD/Shannon failed, enter EXACT refine (n=" << n << ")\n";
-
-        // 👉 这里才是 exact / klut 的“唯一入口”
-        return build_small_tree(f);  
-        // 如果你有 exact_2lut_refine，就在这里调用它
-    }
-
-    // 没开 -e，才直接退化
-    return build_small_tree(f);
-}
-
-    vector<int> phi_original_vars = phi_tt.order;
-    vector<int> psi_original_vars = psi_tt.order;
-    
-    int n_phi = phi_tt.order.size();
-    int n_psi = psi_tt.order.size();
-    
-    cout << "📌 递归分解 Φ：原始变量 { ";
-    for (int v : phi_original_vars) cout << v << " ";
-    cout << "} → 局部编号 { ";
-    for (int i = 1; i <= n_phi; i++) cout << i << " ";
-    cout << "}\n";
-    cout << "   映射关系：";
-    for (int i = 0; i < n_phi; i++)
-        cout << "位置" << (i+1) << "→变量" << phi_original_vars[i] << " ";
-    cout << "\n";
-    
-    cout << "📌 递归分解 Ψ：原始变量 { ";
-    for (int v : psi_original_vars) cout << v << " ";
-    cout << "} → 局部编号 { ";
-    for (int i = 1; i <= n_psi; i++) cout << i << " ";
-    cout << "}\n";
-    cout << "   映射关系：";
-    for (int i = 0; i < n_psi; i++)
-        cout << "位置" << (i+1) << "→变量" << psi_original_vars[i] << " ";
-    cout << "\n\n";
-
-if (MF12.empty())
-{
-    // f = Ψ，本质上只是消掉了一层
-    // 不要直接叶子化，继续走 DSD 主线
-    return dsd_factor(psi_tt, depth + 1);
-}
+        // collapse: f = Ψ（继续 DSD 主线）
+        if (MF12.empty())
+            return dsd_factor(psi_tt, depth + 1);
 
         int L, R;
 
@@ -830,17 +844,27 @@ if (MF12.empty())
         if (is_terminal_tt(phi_tt))
             L = build_small_tree(phi_tt);
         else
-            L = dsd_factor(phi_tt, depth+1);
+            L = dsd_factor(phi_tt, depth + 1);
 
         // Ψ
         if (is_terminal_tt(psi_tt))
             R = build_small_tree(psi_tt);
         else
-            R = dsd_factor(psi_tt, depth+1);
+            R = dsd_factor(psi_tt, depth + 1);
 
+        return new_node(MF12, {L, R});
+    }
 
+    // =========================
+    // 3) DSD 失败：prime 节点处理
+    //    - n > 4 : Shannon 1 层（dsd_else_decompose 内部已做）
+    //    - n <=4 : exact 2-LUT（dsd_else_decompose 内部已做）
+    // =========================
+    if (ENABLE_ELSE_DEC)
+        return dsd_else_decompose(f, depth);
 
-    return new_node(MF12,{L,R});
+    // 没开 -e：就把 prime 当叶子（保持原行为）
+    return build_small_tree(f);
 }
 
 // =====================================================
@@ -884,7 +908,8 @@ inline int run_dsd_recursive(const std::string& binary01, bool enable_else_dec)
         
     // 🔥 只在最开始缩减一次
     TT root_shrunk = shrink_to_support(root);
-    int root_id = dsd_factor(root_shrunk);  // 递归中不再缩减
+    int root_id = dsd_factor(root_shrunk); 
+    refine_all_prime_nodes(); // 递归中不再缩减
     // int root_id = dsd_factor(root);
 
     // ================= 修改后的这块 =================

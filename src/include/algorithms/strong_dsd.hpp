@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "stp_dsd.hpp"
+#include "strong_else_dec.hpp"
 #include "node_global.hpp"
 
 // =====================================================
@@ -409,6 +409,34 @@ inline int resolve_global_var_id(
     }
     return local_id;
 }
+inline int resolve_var_node_id_no_side_effect(
+    int var_id,  // 这是当前 order 里的 var_id（可能是局部变量）
+    const std::vector<int>* local_to_global,
+    const std::unordered_map<int,int>* placeholder_nodes)
+{
+    // 1) placeholder_nodes（局部占位）
+    if (placeholder_nodes) {
+        auto it = placeholder_nodes->find(var_id);
+        if (it != placeholder_nodes->end()) return it->second;
+    }
+
+    // 2) 全局占位绑定（如果你用过 PLACEHOLDER_BINDINGS）
+    auto git = PLACEHOLDER_BINDINGS.find(var_id);
+    if (git != PLACEHOLDER_BINDINGS.end()) return git->second;
+
+    // 3) local_to_global 映射
+    int global_var = var_id;
+    if (local_to_global &&
+        var_id >= 0 &&
+        var_id < (int)local_to_global->size() &&
+        (*local_to_global)[var_id] != 0)
+    {
+        global_var = (*local_to_global)[var_id];
+    }
+
+    // 4) 最终返回 input node
+    return new_in_node(global_var);
+}
 
 // =====================================================
 // ★ Recursive Strong DSD (subset enumeration)
@@ -423,37 +451,79 @@ inline int build_strong_dsd_nodes_impl(
     // 入口：打印当前 TT + order
     print_tt_with_order("进入 Strong DSD", mf, order, depth);
 
-    if (mf.size() <= 4) {
+    const int n = static_cast<int>(order.size());
+
+    // =========================================================
+    // ✅ 关键：-e 开启时，3~4 输入子函数强制用 EXACT 2-LUT refine
+    // 这样永远不会留下 3-input/4-input LUT（比如 0x83）
+    // =========================================================
+    if (ENABLE_ELSE_DEC && n >= 3 && n <= 4)
+    {
+        std::string indent((size_t)depth * 2, ' ');
+        std::cout << indent
+                  << "⚠️ Strong: force EXACT 2-LUT refine (n=" << n << ")\n";
+
+        TT cur;
+        cur.f01   = mf;
+        cur.order = order;
+
+        // dsd_else_decompose 内部对 n<=4 会走 exact 2-LUT
+        // 并返回由 2-LUT 组成的网络（不会产生 3-input 节点）
+        return dsd_else_decompose(cur, depth);
+    }
+
+    // =========================================================
+    // 原来的终止：2 输入及以下直接落地
+    // =========================================================
+    if (mf.size() <= 4)
+    {
         print_tt_with_order("⏹ Stop (size <= 4)", mf, order, depth);
-               auto children = make_children_from_order_with_placeholder(
+        auto children = make_children_from_order_with_placeholder(
             order, placeholder_nodes, local_to_global);
         return new_node(mf, children);
     }
 
-    // ① subset-enum split, pass depth for aligned prints
+    // ① subset-enum split
     StrongDsdSplit split = run_strong_dsd_by_mx_subset(mf, order, depth);
 
-    // ===== 关键：拒绝 |My| == 1 的 split（必须在使用 split 之前）=====
-// if (split.found && split.my_vars_msb2lsb.size() == 1) {
-//     std::string indent((size_t)depth * 2, ' ');
-//     std::cout << indent
-//               << "⚠️ Skip split: |My| == 1 (not accepted)\n";
-
-//     auto children = make_children_from_order_with_placeholder(
-//         order, placeholder_nodes, local_to_global
-//     );
-//     return new_node(mf, children);
-// }
-
-
-    if (!split.found) {
+    if (!split.found)
+    {
         std::string indent((size_t)depth * 2, ' ');
         std::cout << indent << "❌ Strong DSD: no valid split\n";
+
+        // ===============================
+        // 🔥 -e：n>4 做 Shannon 一层，然后回到 strong 主线
+        // ===============================
+        if (ENABLE_ELSE_DEC && n > 4)
+        {
+            // pivot = 当前 order 的 MSB 对应的输入节点
+            int pivot_node =
+                make_children_from_order_with_placeholder(
+                    order, placeholder_nodes, local_to_global
+                )[0];
+
+            return strong_else_decompose(
+                mf,
+                order,
+                depth,
+                pivot_node,
+                local_to_global,
+                placeholder_nodes,
+                build_strong_dsd_nodes_impl
+            );
+        }
+
+        // ===============================
+        // ❌ 没开 -e：才退化成叶子 LUT（可能是 3/4 输入）
+        // ===============================
         auto children = make_children_from_order_with_placeholder(
-        order, placeholder_nodes, local_to_global);
+            order, placeholder_nodes, local_to_global);
         return new_node(mf, children);
     }
 
+    // ---------------------------------------------------------
+    // split found：正常 strong DSD 递归
+    // ---------------------------------------------------------
     const auto& result = split.dsd;
 
     {
@@ -465,73 +535,67 @@ inline int build_strong_dsd_nodes_impl(
         std::cout << indent << "My 使用变量（MSB->LSB）：{ ";
         for (int v : split.my_vars_msb2lsb) std::cout << v << " ";
         std::cout << "}\n";
+
         std::cout << indent << "Mx 使用变量（MSB->LSB）：{ ";
         for (int v : split.mx_vars_msb2lsb) std::cout << v << " ";
         std::cout << "}\n";
     }
 
-    // ② recurse on My
-    // IMPORTANT: your existing children construction reverses order,
-    // so keep the same convention: reverse before passing down.
-// ===== ① recurse on My (MSB->LSB, no reverse) =====
-const std::vector<int>& order_my = split.my_vars_msb2lsb;
+    // ===== recurse on My =====
+    const std::vector<int>& order_my = split.my_vars_msb2lsb;
+    print_tt_with_order("递归进入 My", result.My, order_my, depth);
 
-print_tt_with_order("递归进入 My", result.My, order_my, depth);
+    int my_id = build_strong_dsd_nodes_impl(
+        result.My,
+        order_my,
+        depth + 1,
+        local_to_global,
+        placeholder_nodes
+    );
 
-int my_id = build_strong_dsd_nodes_impl(
-    result.My,
-    order_my,
-    depth + 1,
-    local_to_global,
-    placeholder_nodes
-);
+    // ===== recurse on Mx =====
+    int k = (int)split.mx_vars_msb2lsb.size();
+    int my_local_id = k + 1;
 
-// ===== ② recurse on Mx =====
-// |Mx| = k
-int k = (int)split.mx_vars_msb2lsb.size();
-int my_local_id = k + 1;
+    std::vector<int> order_mx;
+    order_mx.reserve(k + 1);
+    order_mx.push_back(my_local_id);
+    for (int i = k; i >= 1; --i) order_mx.push_back(i);
 
-// order: (my_local, k, k-1, ..., 1)
-std::vector<int> order_mx;
-order_mx.reserve(k + 1);
-order_mx.push_back(my_local_id);
-for (int i = k; i >= 1; --i) order_mx.push_back(i);
+    std::unordered_map<int, int> placeholder_nodes_mx;
+    std::vector<int> local_to_global_mx(my_local_id + 1, 0);
 
-// placeholder + local_to_global
-std::unordered_map<int, int> placeholder_nodes_mx;
-std::vector<int> local_to_global_mx(my_local_id + 1, 0);
+    placeholder_nodes_mx[my_local_id] = my_id;
 
-// My 占据 local_id = k+1
-placeholder_nodes_mx[my_local_id] = my_id;
+    const std::unordered_map<int, int> empty_ph;
+    const auto& parent_ph = placeholder_nodes ? *placeholder_nodes : empty_ph;
 
-// 继承父 placeholder
-const std::unordered_map<int, int> empty_ph;
-const auto& parent_ph = placeholder_nodes ? *placeholder_nodes : empty_ph;
+    for (int i = 0; i < k; ++i)
+    {
+        int old_id = split.mx_vars_msb2lsb[i];
+        int new_id = k - i;
 
-// Mx 变量映射：MSB->LSB
-for (int i = 0; i < k; ++i) {
-    int old_id = split.mx_vars_msb2lsb[i];
-    int new_id = k - i;
-
-    auto it = parent_ph.find(old_id);
-    if (it != parent_ph.end()) {
-        placeholder_nodes_mx[new_id] = it->second;
-    } else {
-        local_to_global_mx[new_id] =
-            resolve_global_var_id(old_id, local_to_global);
+        auto it = parent_ph.find(old_id);
+        if (it != parent_ph.end())
+        {
+            placeholder_nodes_mx[new_id] = it->second;
+        }
+        else
+        {
+            local_to_global_mx[new_id] =
+                resolve_global_var_id(old_id, local_to_global);
+        }
     }
-}
 
-print_tt_with_order("递归进入 Mx", result.Mx, order_mx, depth);
+    print_tt_with_order("递归进入 Mx", result.Mx, order_mx, depth);
 
-return build_strong_dsd_nodes_impl(
-    result.Mx,
-    order_mx,
-    depth + 1,
-    &local_to_global_mx,
-    &placeholder_nodes_mx
-);
-
+    return build_strong_dsd_nodes_impl(
+        result.Mx,
+        order_mx,
+        depth + 1,
+        &local_to_global_mx,
+        &placeholder_nodes_mx
+    );
 }
 
 inline int build_strong_dsd_nodes(
