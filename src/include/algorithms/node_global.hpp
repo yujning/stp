@@ -40,7 +40,7 @@ inline void RESET_NODE_GLOBAL()
 {
     NODE_ID = 1;
     STEP_ID = 1;
-    ENABLE_ELSE_DEC = false;
+    //ENABLE_ELSE_DEC = false;
     ORIGINAL_VAR_COUNT = 0;
     NEXT_PLACEHOLDER_ID = 0;
     ROOT_NODE_ID = 0;

@@ -597,13 +597,196 @@ inline int build_strong_dsd_nodes_impl(
         &placeholder_nodes_mx
     );
 }
+inline bool strong_is_non_2input_node(int node_id)
+{
+    if (node_id <= 0) return false;
+    const DSDNode* nd = nullptr;
+    for (const auto& cand : NODE_LIST)
+    {
+        if (cand.id == node_id)
+        {
+            nd = &cand;
+            break;
+        }
+    }
+    if (!nd) return false;
+    if (nd->func == "in" || nd->func == "0" || nd->func == "1") return false;
+    return nd->child.size() > 2;
+}
+
+inline void strong_replace_node_everywhere(int old_id, int new_id)
+{
+    if (old_id == new_id) return;
+
+    for (auto& nd : NODE_LIST)
+    {
+        for (auto& c : nd.child)
+        {
+            if (c == old_id) c = new_id;
+        }
+    }
+
+    if (ROOT_NODE_ID == old_id)
+        ROOT_NODE_ID = new_id;
+}
+
+inline int strong_refine_non_2input_node(int node_id)
+{
+    const DSDNode* nd = nullptr;
+    for (const auto& cand : NODE_LIST)
+    {
+        if (cand.id == node_id)
+        {
+            nd = &cand;
+            break;
+        }
+    }
+    if (!nd) return node_id;
+    const int n = static_cast<int>(nd->child.size());
+
+    std::vector<int> order;
+    order.reserve(n);
+
+    std::unordered_map<int, int> placeholder_nodes;
+    placeholder_nodes.reserve(n);
+
+    for (int child_id : nd->child)
+    {
+        const DSDNode* child = nullptr;
+        for (const auto& cand : NODE_LIST)
+        {
+            if (cand.id == child_id)
+            {
+                child = &cand;
+                break;
+            }
+        }
+        if (child && child->func == "in")
+        {
+            order.push_back(child->var_id);
+        }
+        else
+        {
+            int ph_id = allocate_placeholder_var_id(&placeholder_nodes);
+            placeholder_nodes[ph_id] = child_id;
+            order.push_back(ph_id);
+        }
+    }
+
+    const int pivot_node = nd->child.empty() ? -1 : nd->child.front();
+
+    return strong_else_decompose(
+        nd->func,
+        order,
+        /*depth=*/0,
+        pivot_node,
+        /*local_to_global=*/nullptr,
+        &placeholder_nodes,
+        build_strong_dsd_nodes_impl);
+}
+
+inline void strong_refine_all_non_2input_nodes()
+{
+    std::vector<int> targets;
+    targets.reserve(NODE_LIST.size());
+
+    for (const auto& nd : NODE_LIST)
+    {
+        if (strong_is_non_2input_node(nd.id))
+            targets.push_back(nd.id);
+    }
+
+    if (targets.empty())
+    {
+        std::cout << "✅ Strong DSD: no non-2input nodes to refine\n";
+        return;
+    }
+
+    std::cout << "🔧 Strong DSD: refining " << targets.size()
+              << " non-2input nodes\n";
+
+    for (int node_id : targets)
+    {
+        if (!strong_is_non_2input_node(node_id)) continue;
+        int new_root = strong_refine_non_2input_node(node_id);
+        strong_replace_node_everywhere(node_id, new_root);
+    }
+}
+inline bool is_need_post_decompose(const DSDNode& nd)
+{
+    // 基本节点不处理
+    if (nd.func == "in" || nd.func == "0" || nd.func == "1")
+        return false;
+
+    // 只关心 >2-input
+    return nd.child.size() > 2;
+}
+
+inline void post_decompose_all_large_nodes_fixpoint()
+{
+    std::cout << "🔧 Post-decompose: start fixpoint refinement\n";
+
+    bool changed = true;
+    int round = 0;
+
+    while (changed)
+    {
+        changed = false;
+        ++round;
+
+        std::cout << "🔁 Post-decompose round " << round << "\n";
+
+        // ⚠️ 每一轮都重新扫描整个 NODE_LIST
+        for (size_t i = 0; i < NODE_LIST.size(); ++i)
+        {
+            const DSDNode& nd = NODE_LIST[i];
+
+            if (!is_need_post_decompose(nd))
+                continue;
+
+            int old_id = nd.id;
+
+            std::cout << "  🔍 Found >2-input node: id=" << old_id
+                      << " fanin=" << nd.child.size()
+                      << " func=" << nd.func << "\n";
+
+            // 👉 你定义的“其他分解操作”
+            int new_id = strong_refine_non_2input_node(old_id);
+
+            if (new_id != old_id)
+            {
+                std::cout << "  ✂️ Refined node " << old_id
+                          << " -> " << new_id << "\n";
+
+                strong_replace_node_everywhere(old_id, new_id);
+
+                // 🔴 非常重要：
+                // 网络结构已经变了，立刻退出本轮，重新扫描
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    std::cout << "✅ Post-decompose finished: no >2-input nodes left\n";
+}
 
 inline int build_strong_dsd_nodes(
     const std::string& mf,
     const std::vector<int>& order,
     int depth = 0)
 {
-    int root_id = build_strong_dsd_nodes_impl(mf, order, depth, nullptr, nullptr);
+    int root_id =
+        build_strong_dsd_nodes_impl(mf, order, depth, nullptr, nullptr);
+
     ROOT_NODE_ID = root_id;
+
+    // ⭐ Strong DSD 完全结束后，再做后处理
+    if (ENABLE_ELSE_DEC)
+    {
+        post_decompose_all_large_nodes_fixpoint();
+        root_id = ROOT_NODE_ID;
+    }
+
     return root_id;
 }

@@ -26,6 +26,7 @@
 //   - n > 4  : Shannon ONE layer，然后回 Strong DSD
 // =====================================================
 
+
 // ---------- helper: resolve a var_id to a node_id (placeholder-aware) ----------
 inline int strong_resolve_var_node_id(
     int var_id,
