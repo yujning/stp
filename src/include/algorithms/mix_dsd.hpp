@@ -8,7 +8,7 @@
 
 #include "stp_dsd.hpp"
 #include "strong_dsd.hpp"
-
+#include "mix_else_dec.hpp"
 // =====================================================
 // Mixed DSD: prefer normal DSD, fallback to strong DSD per layer
 // =====================================================
@@ -150,23 +150,47 @@ inline DsdMixResult dsd_factor_mix_impl(
         // 本层分解 + 子树完整 => 成功
         return {new_node(MF12, {L.node_id, R.node_id}), true, true};
     }
-// -------- 2) Try strong DSD (one layer) --------
-std::cout << "⚠️ DSD -f failed at depth " << depth
-          << ", fallback to strong DSD (one layer).\n";
+    // -------- 2) Try strong DSD (one layer) --------
+    std::cout << "⚠️ DSD -f failed at depth " << depth
+              << ", fallback to strong DSD (one layer).\n";
 
-StrongDsdSplit split = run_strong_dsd_by_mx_subset(f.f01, f.order, depth);
-if (!split.found)
-{
-    if (!build_if_no_decomp)
+    StrongDsdSplit split = run_strong_dsd_by_mx_subset(f.f01, f.order, depth);
+    if (!split.found)
     {
-        // 严格模式：明确失败，向上传播
-        return {-1, false, false};
-    }
+        if (ENABLE_ELSE_DEC)
+        {
+            auto mix_rec = [&](const TT& next,
+                               int next_depth,
+                               const std::vector<int>* next_local_to_global,
+                               const std::unordered_map<int, int>* next_placeholder_nodes) {
+                return dsd_factor_mix_impl(
+                           next,
+                           next_depth,
+                           next_local_to_global,
+                           next_placeholder_nodes,
+                           true)
+                    .node_id;
+            };
 
-    // 非严格：允许直接建树完成
-    int nid = build_small_tree_mix(f, local_to_global, placeholder_nodes);
-    return {nid, false, true};
-}
+            int nid = mix_else_decompose(
+                f,
+                depth,
+                local_to_global,
+                placeholder_nodes,
+                mix_rec);
+            return {nid, true, true};
+        }
+
+ if (!build_if_no_decomp)
+        {
+            // 严格模式：明确失败，向上传播
+            return {-1, false, false};
+        }
+
+        // 非严格：允许直接建树完成
+        int nid = build_small_tree_mix(f, local_to_global, placeholder_nodes);
+        return {nid, false, true};
+    }
 
 // =====================================================
 // strong DSD 找到 split：先 build my，再把 my 当 placeholder 融入 mx
