@@ -123,6 +123,13 @@ inline DsdMixResult dsd_factor_mix_impl(
 
     if (factor_once_with_reorder_01(f, depth, MF12, phi_tt, psi_tt))
     {
+                // collapse: f = Ψ（继续 DSD 主线）
+        if (MF12.empty())
+        {
+            auto psi = dsd_factor_mix_impl(
+                psi_tt, depth + 1, local_to_global, placeholder_nodes, build_if_no_decomp);
+            return {psi.node_id, true, psi.fully_success};
+        }
         // 递归分解左右子树（这里必须“严格”，不让子树偷偷建树）
         auto L = dsd_factor_mix_impl(phi_tt, depth + 1, local_to_global, placeholder_nodes, false);
         auto R = dsd_factor_mix_impl(psi_tt, depth + 1, local_to_global, placeholder_nodes, false);
