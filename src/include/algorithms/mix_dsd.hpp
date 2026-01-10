@@ -264,7 +264,9 @@ return {mx.node_id, true, true};
 
 inline int run_dsd_recursive_mix(const std::string& binary01)
 {
+    const bool enable_else_dec = ENABLE_ELSE_DEC;
     RESET_NODE_GLOBAL();
+    ENABLE_ELSE_DEC = enable_else_dec;
     if (!is_power_of_two(binary01.size())) {
         std::cout << "输入长度必须为 2^n\n";
         return false;

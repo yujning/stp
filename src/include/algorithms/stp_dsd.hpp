@@ -908,8 +908,9 @@ inline int run_dsd_recursive(const std::string& binary01, bool enable_else_dec)
         
     // 🔥 只在最开始缩减一次
     TT root_shrunk = shrink_to_support(root);
-    int root_id = dsd_factor(root_shrunk); 
-    refine_all_prime_nodes(); // 递归中不再缩减
+    int root_id = dsd_factor(root_shrunk);
+        if (ENABLE_ELSE_DEC)
+            refine_all_prime_nodes(); // 递归中不再缩减
     // int root_id = dsd_factor(root);
 
     // ================= 修改后的这块 =================

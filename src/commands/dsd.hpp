@@ -103,6 +103,7 @@ namespace alice
           const auto t1 = clk::now();
 
           RESET_NODE_GLOBAL();
+          ENABLE_ELSE_DEC = use_else_dec;
           ORIGINAL_VAR_COUNT = static_cast<int>( std::log2( raw.size() ) );
 
           std::vector<int> order;
@@ -200,6 +201,7 @@ namespace alice
         const auto t1 = clk::now();
 
         RESET_NODE_GLOBAL();
+        ENABLE_ELSE_DEC = use_else_dec;
         ORIGINAL_VAR_COUNT = static_cast<int>( std::log2( binary.size() ) );
 
         std::vector<int> order;
