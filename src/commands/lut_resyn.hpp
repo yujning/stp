@@ -322,6 +322,9 @@ protected:
             fout << "INPUT(" << in << ")\n";
         for (const auto& out : net.outputs)
             fout << "OUTPUT(" << out << ")\n";
+        
+        for (const auto& line : net.passthrough_lines)
+            fout << line << "\n";
         fout << "\n";
 
         std::vector<std::string> lut_names;
