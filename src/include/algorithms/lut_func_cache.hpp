@@ -16,11 +16,13 @@ struct LutFuncKey
 {
     uint32_t nvars;
     std::string truth01;
+    uint32_t mode = 0;
 
     bool operator<(const LutFuncKey& rhs) const
     {
         if (nvars != rhs.nvars) return nvars < rhs.nvars;
-        return truth01 < rhs.truth01;
+        if (truth01 != rhs.truth01) return truth01 < rhs.truth01;
+        return mode < rhs.mode;
     }
 };
 

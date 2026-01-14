@@ -29,7 +29,7 @@
 #include "../include/algorithms/66lut_dsd.hpp"
 #include "../include/algorithms/66lut_else_dec.hpp"
 
-#include "../include/algorithms/lut_func_cache.hpp"   // ✅ 新 cache
+#include "../include/algorithms/lut_func_cache.hpp" // cache
 
 namespace alice
 {
@@ -55,9 +55,9 @@ static int run_bi_decomp_for_resyn(
     bool prev_dsd_mix        = BD_ENABLE_DSD_MIX_FALLBACK;
 
     RESET_NODE_GLOBAL();
-    ENABLE_ELSE_DEC               = enable_else_dec;
-    BD_ENABLE_DSD_MIX_FALLBACK    = enable_dsd_mix_fallback;
-    BD_MINIMAL_OUTPUT             = true;
+    ENABLE_ELSE_DEC            = enable_else_dec;
+    BD_ENABLE_DSD_MIX_FALLBACK = enable_dsd_mix_fallback;
+    BD_MINIMAL_OUTPUT          = true;
 
     if (!is_power_of_two(binary01.size()))
         throw std::runtime_error("input length must be power of two");
@@ -85,17 +85,21 @@ static int run_bi_decomp_for_resyn(
 }
 
 /*============================================================*
- * STRONG DSD
+ * STRONG DSD (入口 reset -> set，避免 -e 粘住/被 reset 覆盖)
  *============================================================*/
-static int run_strong_dsd_for_resyn(const std::string& binary01)
+static int run_strong_dsd_for_resyn(
+    const std::string& binary01,
+    bool enable_else_dec )
 {
     if (!is_power_of_two(binary01.size()))
         throw std::runtime_error("input length must be power of two");
 
     int n = static_cast<int>(std::log2(binary01.size()));
 
+    // ✅ 入口统一语义：reset → set
     RESET_NODE_GLOBAL();
-    ORIGINAL_VAR_COUNT = n;
+    ENABLE_ELSE_DEC     = enable_else_dec;
+    ORIGINAL_VAR_COUNT  = n;
 
     TT root;
     root.f01 = binary01;
@@ -108,6 +112,72 @@ static int run_strong_dsd_for_resyn(const std::string& binary01)
 
     TT root_shrunk = shrink_to_support(root);
     return build_strong_dsd_nodes(root_shrunk.f01, root_shrunk.order, 0);
+}
+
+/*============================================================*
+ * DSD (入口 reset -> set，避免 -e 粘住/被 reset 覆盖)
+ * 说明：run_dsd_recursive 内部可能依赖 ENABLE_ELSE_DEC，
+ *       所以这里显式 reset + set，且不再硬编码 true。
+ *============================================================*/
+static int run_dsd_for_resyn(
+    const std::string& binary01,
+    bool enable_else_dec )
+{
+    if (!is_power_of_two(binary01.size()))
+        throw std::runtime_error("input length must be power of two");
+
+    int n = static_cast<int>(std::log2(binary01.size()));
+
+    RESET_NODE_GLOBAL();
+    ENABLE_ELSE_DEC    = enable_else_dec;
+    ORIGINAL_VAR_COUNT = n;
+
+    TT root;
+    root.f01 = binary01;
+    root.order.resize(n);
+    for (int i = 0; i < n; ++i)
+        root.order[i] = n - i;
+
+    for (int v = 1; v <= n; ++v)
+        new_in_node(v);
+
+    TT root_shrunk = shrink_to_support(root);
+
+    // ✅ 不要 run_dsd_recursive(binary01, true) 这种硬编码
+    return run_dsd_recursive(root_shrunk.f01, enable_else_dec);
+}
+
+/*============================================================*
+ * MIX DSD (入口 reset -> set)
+ *============================================================*/
+static int run_mix_dsd_for_resyn(
+    const std::string& binary01,
+    bool enable_else_dec )
+{
+    if (!is_power_of_two(binary01.size()))
+        throw std::runtime_error("input length must be power of two");
+
+    int n = static_cast<int>(std::log2(binary01.size()));
+
+    RESET_NODE_GLOBAL();
+    ENABLE_ELSE_DEC    = enable_else_dec;
+    ORIGINAL_VAR_COUNT = n;
+
+    TT root;
+    root.f01 = binary01;
+    root.order.resize(n);
+    for (int i = 0; i < n; ++i)
+        root.order[i] = n - i;
+
+    for (int v = 1; v <= n; ++v)
+        new_in_node(v);
+
+    TT root_shrunk = shrink_to_support(root);
+
+    if (enable_else_dec)
+        return run_dsd_recursive(root_shrunk.f01, true);
+
+    return run_dsd_recursive_mix(root_shrunk.f01);
 }
 
 /*============================================================*
@@ -202,6 +272,9 @@ public:
 protected:
     void execute() override
     {
+        // ✅ 命令级：每次 lut_resyn 都重新算（不复用上次会话 cache）
+        LutFuncCache::clear();
+
         if (output_file.empty())
         {
             std::cout << "❌ Output file missing\n";
@@ -233,6 +306,10 @@ protected:
             if (use_strong_dsd) strategy = resyn_strategy::strong_dsd;
             if (use_mix_dsd)    strategy = resyn_strategy::mix_dsd;
         }
+        else if (use_bi_dec)
+        {
+            strategy = resyn_strategy::bi_dec;
+        }
 
         std::ofstream fout(output_file);
         if (!fout)
@@ -248,6 +325,7 @@ protected:
         fout << "\n";
 
         std::vector<std::string> lut_names;
+        lut_names.reserve(net.luts.size());
         for (const auto& kv : net.luts)
             lut_names.push_back(kv.first);
         std::sort(lut_names.begin(), lut_names.end());
@@ -270,92 +348,92 @@ protected:
                 continue;
             }
 
+            // cache key includes mode; but we still clear cache per command,
+            // so no cross-command reuse.
+            uint32_t mode = 0;
+            mode |= static_cast<uint32_t>(strategy) & 0xFF;
+            if (use_else_dec)         mode |= (1u << 8);
+            if (use_dsd_mix_fallback) mode |= (1u << 9);
+            if (use_lut66)            mode |= (1u << 10);
+            if (use_lut66_only)       mode |= (1u << 11);
+
             std::string binary01 = hex_to_binary(lut.hex);
             LutFuncKey key{
                 static_cast<uint32_t>(lut.fanins.size()),
-                binary01
+                binary01,
+                mode
             };
 
             if (!LutFuncCache::has(key))
             {
                 int root_id = 0;
 
-if (use_lut66)
-{
-    bool success = run_lut66_for_resyn(
-        binary01,
-        lut.fanins.size(),
-        root_id,
-        use_lut66_only
-    );
+                if (use_lut66)
+                {
+                    bool success = run_lut66_for_resyn(
+                        binary01,
+                        static_cast<int>(lut.fanins.size()),
+                        root_id,
+                        use_lut66_only
+                    );
 
-    // --------------------------------------------------
-    // 🔒 --lut66 --only：失败 → 原样输出，直接跳过
-    // --------------------------------------------------
-    if (!success && use_lut66_only)
-    {
-        fout << name << " = LUT " << lut.hex << " (";
-        for (size_t i = 0; i < lut.fanins.size(); ++i)
-        {
-            if (i) fout << ", ";
-            fout << lut.fanins[i];
-        }
-        fout << ")\n\n";
+                    if (!success && use_lut66_only)
+                    {
+                        // 原样输出
+                        fout << name << " = LUT " << lut.hex << " (";
+                        for (size_t i = 0; i < lut.fanins.size(); ++i)
+                        {
+                            if (i) fout << ", ";
+                            fout << lut.fanins[i];
+                        }
+                        fout << ")\n\n";
+                        continue;
+                    }
 
-        continue;   // ⬅️ 关键：不 cache，不 emit，不 resyn
-    }
+                    if (!success && use_else_dec)
+                    {
+                        root_id = run_bi_decomp_for_resyn(binary01, true, true);
+                        success = true;
+                    }
 
-    // --------------------------------------------------
-    // 允许 fallback 的情况
-    // --------------------------------------------------
-    if (!success && use_else_dec)
-    {
-        root_id = run_bi_decomp_for_resyn(binary01, true, true);
-        success = true;
-    }
-
-    // --------------------------------------------------
-    // 仍失败（无 fallback）
-    // --------------------------------------------------
-    if (!success)
-    {
-        fout << name << " = LUT " << lut.hex << " (";
-        for (size_t i = 0; i < lut.fanins.size(); ++i)
-        {
-            if (i) fout << ", ";
-            fout << lut.fanins[i];
-        }
-        fout << ")\n\n";
-
-        continue;
-    }
-}
-
+                    if (!success)
+                    {
+                        fout << name << " = LUT " << lut.hex << " (";
+                        for (size_t i = 0; i < lut.fanins.size(); ++i)
+                        {
+                            if (i) fout << ", ";
+                            fout << lut.fanins[i];
+                        }
+                        fout << ")\n\n";
+                        continue;
+                    }
+                }
                 else
                 {
+                    // ✅ 彻底禁止硬编码 true 的调用路径
                     switch (strategy)
                     {
                     case resyn_strategy::bi_dec:
                         root_id = run_bi_decomp_for_resyn(
                             binary01, use_else_dec, use_dsd_mix_fallback);
                         break;
+
                     case resyn_strategy::dsd:
-                        root_id = run_dsd_recursive(binary01, use_else_dec);
+                        root_id = run_dsd_for_resyn(binary01, use_else_dec);
                         break;
+
                     case resyn_strategy::strong_dsd:
-                        root_id = use_else_dec
-                            ? run_dsd_recursive(binary01, true)
-                            : run_strong_dsd_for_resyn(binary01);
+                        root_id = run_strong_dsd_for_resyn(binary01, use_else_dec);
                         break;
+
                     case resyn_strategy::mix_dsd:
-                        root_id = use_else_dec
-                            ? run_dsd_recursive(binary01, true)
-                            : run_dsd_recursive_mix(binary01);
+                        root_id = run_mix_dsd_for_resyn(binary01, use_else_dec);
                         break;
                     }
                 }
 
                 CachedResyn entry;
+                entry.nodes.reserve(NODE_LIST.size());
                 for (const auto& n : NODE_LIST)
                 {
                     CachedLutNode c;
@@ -363,7 +441,7 @@ if (use_lut66)
                     c.func   = n.func;
                     c.var_id = n.var_id;
                     c.child  = n.child;
-                    entry.nodes.push_back(c);
+                    entry.nodes.push_back(std::move(c));
                 }
                 entry.root_id = root_id;
 
@@ -374,23 +452,25 @@ if (use_lut66)
 
             std::map<int, std::string> name_of;
 
+            // inputs
             for (const auto& node : cached.nodes)
             {
                 if (node.func == "in")
-                    name_of[node.id] =
-                        lut.fanins[node.var_id - 1];
+                    name_of[node.id] = lut.fanins[node.var_id - 1];
             }
 
+            // internal node names
             for (const auto& node : cached.nodes)
             {
                 if (node.func == "in") continue;
+
                 if (node.id == cached.root_id)
                     name_of[node.id] = name;
                 else
-                    name_of[node.id] =
-                        name + "_d" + std::to_string(++unique_id);
+                    name_of[node.id] = name + "_d" + std::to_string(++unique_id);
             }
 
+            // emit
             for (const auto& node : cached.nodes)
             {
                 if (node.func == "in") continue;
@@ -414,6 +494,15 @@ if (use_lut66)
 
         std::cout << "✅ LUT resynthesis written to "
                   << output_file << "\n";
+
+        use_bi_dec = false;
+        use_dsd = false;
+        use_strong_dsd = false;
+        use_mix_dsd = false;
+        use_else_dec = false;
+        use_dsd_mix_fallback = false;
+        use_lut66 = false;
+        use_lut66_only = false;
     }
 
 private:
