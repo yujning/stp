@@ -225,16 +225,26 @@ inline std::string compute_MXYX_from_MF(
 // =====================================================
 // Step 2：求 MX / MY
 // =====================================================
+// =====================================================
+// Step 2：求 MX / MY
+// 兼容原功能：MX 仍然输出为 0/1（x->0），用于 DAG
+// 额外输出：MX_with_x 保留 x，用于打印调试
+// =====================================================
 inline bool solve_MX_MY_from_MXY(
     const std::string& MXY,
     int x,int y,int z,
-    std::string& MX,
+    std::string& MX,          // 原输出：用于 DAG（x->0）
+    std::string& MX_with_x,   // 新增：用于打印（保留 x）
     std::string& MY)
 {
     uint64_t MYN = pow2(x+y);
     uint64_t block_size = pow2(y+z);
 
+    // concrete blocks：会在 merge 时把 x 吃掉（尽可能具体化）
     std::vector<std::string> blocks;
+    // symbolic blocks：保留首次出现的 block（含 x），merge 不修改
+    std::vector<std::string> blocks_symbolic;
+
     MY.resize(MYN);
 
     for (uint64_t i=0;i<MYN;i++)
@@ -246,13 +256,18 @@ inline bool solve_MX_MY_from_MXY(
         {
             bool ok=true;
             for (uint64_t j=0;j<block_size;j++)
+            {
                 if (blk[j]!='x' && blocks[k][j]!='x'
                     && blk[j]!=blocks[k][j]) { ok=false; break; }
+            }
 
             if (ok)
             {
+                // 只更新 concrete blocks：把已有的 x 用 blk 填起来
                 for (uint64_t j=0;j<block_size;j++)
                     if (blocks[k][j]=='x') blocks[k][j]=blk[j];
+
+                // symbolic 不动，保留 x 的结构
                 MY[i]=(k==0?'1':'0');
                 hit=true; break;
             }
@@ -262,15 +277,23 @@ inline bool solve_MX_MY_from_MXY(
         {
             if (blocks.size()==2) return false;
             blocks.push_back(blk);
+            blocks_symbolic.push_back(blk);
             MY[i]=(blocks.size()==1?'1':'0');
         }
     }
 
     if (blocks.size()!=2) return false;
 
+    // ===== 输出 MX_with_x（保留 x）=====
+    MX_with_x.clear();
+    for (auto& b: blocks_symbolic)
+        for (char c: b)
+            MX_with_x.push_back(c);
+
+    // ===== 输出 MX（兼容原逻辑：x->0，用于 DAG）=====
     MX.clear();
-    for (auto& b:blocks)
-        for (char c:b)
+    for (auto& b: blocks)
+        for (char c: b)
             MX.push_back(c=='x'?'0':c);
 
     return true;
@@ -355,8 +378,9 @@ inline bool run_strong_bi_dec_and_build_dag(const TT& root_tt)
                 compute_MXYX_from_MF(MFp,x,y,z);
             std::cout<<"🟨 MXY = "<<MXY<<"\n";
 
-            std::string MX,MY;
-            if (!solve_MX_MY_from_MXY(MXY,x,y,z,MX,MY))
+
+            std::string MX, MX_with_x, MY;
+            if (!solve_MX_MY_from_MXY(MXY, x, y, z, MX, MX_with_x, MY))
             {
                 std::cout<<"❌ MX/MY unsat\n";
                 continue;
@@ -365,6 +389,8 @@ inline bool run_strong_bi_dec_and_build_dag(const TT& root_tt)
             std::cout<<"✅ Strong Bi-Decomposition found\n";
             std::cout<<"🟦 MY = "<<MY<<"\n";
             std::cout<<"🟥 MX = "<<MX<<"\n";
+            std::cout<<"🟥 MX(x) = "<<MX_with_x<<"\n";
+
 
             // ===== 构造 DAG =====
             ORIGINAL_VAR_COUNT = max_var_id;
