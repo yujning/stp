@@ -365,41 +365,6 @@ private:
     return result;
   }
 
-  static std::vector<unsigned char> reorder(const std::vector<unsigned char> &truth,
-                                            const std::vector<std::string> &variables,
-                                            const std::vector<std::string> &bound,
-                                            const std::vector<std::string> &free)
-  {
-    const size_t n = variables.size();
-    const size_t r = bound.size();
-    const size_t s = free.size();
-    std::vector<size_t> positions;
-    positions.reserve(n);
-    for (const auto &name : bound)
-      positions.push_back(static_cast<size_t>(std::find(variables.begin(), variables.end(), name) -
-                                              variables.begin()));
-    for (const auto &name : free)
-      positions.push_back(static_cast<size_t>(std::find(variables.begin(), variables.end(), name) -
-                                              variables.begin()));
-
-    std::vector<unsigned char> result;
-    result.reserve(truth.size());
-    // Truth-table strings and LUT hex values use the conventional order
-    // b_(2^n-1), ..., b_0: the first entry is the all-ones assignment.
-    for (size_t combined = 0; combined < truth.size(); ++combined)
-    {
-      const size_t combined_assignment = truth.size() - 1 - combined;
-      size_t original = 0;
-      for (size_t i = 0; i < n; ++i)
-      {
-        const size_t reordered_bit = (combined_assignment >> (n - 1 - i)) & 1U;
-        original |= reordered_bit << (n - 1 - positions[i]);
-      }
-      result.push_back(truth[truth.size() - 1 - original]);
-    }
-    return result;
-  }
-
   static bool check_candidate(const std::vector<unsigned char> &truth,
                               const std::vector<std::string> &variables, size_t m, size_t mask,
                               Candidate &candidate)
@@ -409,14 +374,41 @@ private:
     for (size_t i = 0; i < n; ++i)
       (mask & (1ULL << (n - 1 - i)) ? bound : free).push_back(variables[i]);
 
-    const auto reordered = reorder(truth, variables, bound, free);
     const size_t block_length = 1ULL << (n - m);
+    std::vector<size_t> bound_bits;
+    std::vector<size_t> free_offsets{0};
+    bound_bits.reserve(m);
+    free_offsets.reserve(block_length);
+    // Expand assignments in ascending order, with the lowest original
+    // variable bit first. Only free-variable offsets are materialized.
+    for (size_t bit = 0; bit < n; ++bit)
+    {
+      const size_t original_bit = 1ULL << bit;
+      if (mask & original_bit)
+        bound_bits.push_back(original_bit);
+      else
+      {
+        const size_t count = free_offsets.size();
+        for (size_t offset = 0; offset < count; ++offset)
+          free_offsets.push_back(free_offsets[offset] | original_bit);
+      }
+    }
     std::vector<std::vector<unsigned char>> patterns;
     std::vector<unsigned char> selectors;
     for (size_t i = 0; i < (1ULL << m); ++i)
     {
-      std::vector<unsigned char> block(reordered.begin() + i * block_length,
-                                       reordered.begin() + (i + 1) * block_length);
+      // Truth entries run from the all-ones assignment down to zero.
+      // Scatter the bound assignment and combine it with each free offset
+      // to extract this cofactor directly from the original truth table.
+      const size_t bound_assignment = (1ULL << m) - 1 - i;
+      size_t bound_offset = 0;
+      for (size_t bit = 0; bit < bound_bits.size(); ++bit)
+        if (bound_assignment & (1ULL << bit))
+          bound_offset |= bound_bits[bit];
+      std::vector<unsigned char> block(block_length);
+      for (size_t position = 0; position < block_length; ++position)
+        block[position] = truth[truth.size() - 1 -
+                                (bound_offset | free_offsets[block_length - 1 - position])];
       auto compatible =
           [](const std::vector<unsigned char> &left, const std::vector<unsigned char> &right)
       {
